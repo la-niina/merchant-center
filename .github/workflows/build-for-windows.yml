@@ -35,14 +35,25 @@ jobs:
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           echo "Detected version: $version"
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: wrapper
+
       - name: Build with Gradle
-        run: ./gradlew build
+        run: |
+          ./gradlew build
+          echo "Build completed successfully"
 
       - name: Run tests
-        run: ./gradlew test
+        run: |
+          ./gradlew test
+          echo "Tests completed successfully"
 
       - name: Package the application
-        run: ./gradlew packageReleaseMsi
+        run: |
+          ./gradlew packageReleaseMsi -Pversion=${{ steps.get_version.outputs.VERSION }}
+          echo "Packaging completed"
 
       - name: List MSI directory
         run: |
@@ -62,17 +73,40 @@ jobs:
             exit 1
           }
 
-      - name: Archive build artifacts
+      - name: Uninstall Previous Version (if exists)
+        shell: pwsh
+        run: |
+          $appName = "Merchant Center"
+          $installed = Get-WmiObject -Query "SELECT * FROM Win32_Product WHERE Name = '$appName'"
+          if ($installed) {
+            Write-Host "Uninstalling previous version of $appName..."
+            $installed | ForEach-Object { $_.Uninstall() }
+            Write-Host "$appName uninstalled successfully."
+          } else {
+            Write-Host "$appName is not installed."
+          }
+
+      - name: Archive Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-build-artifacts
-          path: |
-            ${{ steps.find_msi.outputs.MSI_PATH }}
+          name: windows-msi-artifacts
+          path: ${{ steps.find_msi.outputs.MSI_PATH }}
+          retention-days: 5
           if-no-files-found: error
 
-      - name: Create Release
+      - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
-        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.find_msi.outputs.MSI_PATH }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Fallback release creation method
+      - name: Fallback Release Creation
+        if: failure() && startsWith(github.ref, 'refs/tags/v')
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -81,22 +115,3 @@ jobs:
           release_name: Release ${{ steps.get_version.outputs.VERSION }}
           draft: false
           prerelease: true
-
-      - name: Upload Release Asset
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ steps.find_msi.outputs.MSI_PATH }}
-          asset_name: Merchant-Center-${{ steps.get_version.outputs.VERSION }}.msi
-          asset_content_type: application/octet-stream
-
-      - name: Upload to Release (Fallback)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ steps.find_msi.outputs.MSI_PATH }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}

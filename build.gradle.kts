@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "pherus.merchant.center"
-version = "1.0.1-SNAPSHOT"
+version = "1.1-SNAPSHOT"
 
 repositories {
     mavenCentral()
@@ -92,7 +92,7 @@ compose.desktop {
             )
             includeAllModules = true
             packageName = "Merchant Center"
-            packageVersion = "1.0.1"
+            packageVersion = "1.1.1"
             copyright = "© 2025 Pherus all rights reserved"
             description =
                 "Merchant Center is a shop management system for data entries with sale, stocks and export "
@@ -107,6 +107,12 @@ compose.desktop {
                 installationPath = "/usr/share/merchant-center"
                 iconFile.set(File("src/main/resources/merchant.png")) // Change to merchant.png
                 debMaintainer = "pherus@pherus.org"
+            }
+
+            windows {
+                menu = true
+                shortcut = true
+                iconFile.set(project.file("src/main/resources/icon.ico"))
             }
 
             modules("java.base", "java.desktop")
