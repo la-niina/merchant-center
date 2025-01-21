@@ -19,7 +19,7 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
-          java-version: '11'  # Specify the JDK version you need
+          java-version: '21'  # Specify the JDK version you need
           distribution: 'adopt'
 
       - name: Build with Gradle
@@ -29,7 +29,7 @@ jobs:
         run: ./gradlew test  # Run your tests
 
       - name: Package the application
-        run: ./gradlew jpackage  # Package your application
+        run: ./gradlew packageMsi  # Package your application
 
       - name: List build directory
         run: |
@@ -45,4 +45,6 @@ jobs:
             build/**/*.msi
             build/**/*-*.exe
             build/**/*-*.msi
+            build/**/**/*-*.exe
+            build/**/**/*-*.msi
           if-no-files-found: warn
