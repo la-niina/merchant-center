@@ -1,0 +1,39 @@
+name: Build for Windows
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up JDK
+        uses: actions/setup-java@v2
+        with:
+          java-version: '21'  # Specify the JDK version you need
+          distribution: 'adopt'
+
+      - name: Build with Gradle
+        run: ./gradlew build  # Run the Gradle build command
+
+      - name: Run tests
+        run: ./gradlew test  # Run your tests
+
+      - name: Package the application
+        run: ./gradlew jpackage  # Package your application
+
+      - name: Archive build artifacts
+        if: success()
+        uses: actions/upload-artifact@v2
+        with:
+          name: windows-build-artifacts
+          path: build/distributions  # Adjust according to your output path
