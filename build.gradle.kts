@@ -112,7 +112,7 @@ compose.desktop {
             windows {
                 menu = true
                 shortcut = true
-                iconFile.set(project.file("src/main/resources/icon.ico"))
+                iconFile.set(project.file("src/main/resources/merchant.ico"))
             }
 
             modules("java.base", "java.desktop")
