@@ -1,0 +1,92 @@
+CREATE TABLE StockProducts (
+    id TEXT PRIMARY KEY,
+    productName TEXT NOT NULL,
+    description TEXT,
+    estimatedPrice REAL NOT NULL,
+    currentStock INTEGER NOT NULL,
+    minimumStockThreshold INTEGER NOT NULL DEFAULT 10,
+    totalSoldStock INTEGER NOT NULL DEFAULT 0,
+    unitOfMeasurement TEXT DEFAULT 'pieces',
+    lastRestockedDate INTEGER,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL
+);
+
+-- Insert new product
+insertProduct:
+INSERT INTO StockProducts (
+    id,
+    productName,
+    description,
+    estimatedPrice,
+    currentStock,
+    minimumStockThreshold,
+    unitOfMeasurement,
+    createdAt,
+    updatedAt
+) VALUES (?, ?, ?, ?, ?, ?, ?, strftime('%s', 'now'), strftime('%s', 'now'));
+
+-- Check if ID exists
+checkProductIdExists:
+SELECT COUNT(*) FROM StockProducts WHERE id = ?;
+
+-- Add stock
+addStock:
+UPDATE StockProducts
+SET
+    currentStock = currentStock + ?,
+    lastRestockedDate = strftime('%s', 'now'),
+    updatedAt = strftime('%s', 'now')
+WHERE id = ?;
+
+-- Remove stock (for sales)
+removeStock:
+UPDATE StockProducts
+SET
+    currentStock = currentStock - ?,
+    totalSoldStock = totalSoldStock + ?,
+    updatedAt = strftime('%s', 'now')
+WHERE id = ?;
+
+-- Update product details
+updateProduct:
+UPDATE StockProducts
+SET
+    productName = ?,
+    description = ?,
+    estimatedPrice = ?,
+    minimumStockThreshold = ?,
+    updatedAt = strftime('%s', 'now')
+WHERE id = ?;
+
+-- Get all products
+getAllProducts:
+SELECT * FROM StockProducts ORDER BY productName;
+
+-- Get low stock products
+getLowStockProducts:
+SELECT * FROM StockProducts
+WHERE currentStock <= minimumStockThreshold
+ORDER BY currentStock ASC;
+
+-- Get product by ID
+getProductById:
+SELECT * FROM StockProducts WHERE id = ?;
+
+-- Get total inventory value
+getTotalInventoryValue:
+SELECT
+    COALESCE(SUM(estimatedPrice * currentStock), 0) AS totalValue,
+    COALESCE(SUM(totalSoldStock * estimatedPrice), 0) AS totalSales
+FROM StockProducts;
+
+-- Delete product
+deleteProduct:
+DELETE FROM StockProducts WHERE id = ?;
+
+-- Search products
+searchProducts:
+SELECT * FROM StockProducts
+WHERE
+    productName LIKE '%' || ? || '%'
+    OR description LIKE '%' || ? || '%';

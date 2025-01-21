@@ -1,0 +1,91 @@
+CREATE TABLE UserAuthentication(
+    pswd TEXT NOT NULL,
+    last_login INTEGER NOT NULL,
+    is_logged_in INTEGER NOT NULL DEFAULT 0
+);
+
+-- insert user authentication
+insertUserAuthentication:
+INSERT INTO UserAuthentication(pswd, last_login, is_logged_in)
+VALUES (?, ?, 1);
+
+-- replace user authentication
+replaceUserAuthentication:
+REPLACE INTO UserAuthentication(pswd, last_login, is_logged_in)
+VALUES (?, ?, 1);
+
+-- check password and login
+checkPasswordAndLogin {
+    SELECT COUNT(*) FROM UserAuthentication
+    WHERE pswd = ? AND is_logged_in = 1;
+}
+
+-- update login timestamp
+updateLoginTimestamp {
+    UPDATE UserAuthentication SET last_login = ? WHERE is_logged_in = 1;
+}
+
+-- logout
+logout {
+    UPDATE UserAuthentication
+    SET is_logged_in = 0,
+        last_login = 0;
+}
+
+-- check password
+checkPassword {
+    SELECT COUNT(*) FROM UserAuthentication WHERE pswd = ?;
+}
+
+-- update password
+updatePassword {
+    UPDATE UserAuthentication SET pswd = ? WHERE is_logged_in = 1;
+}
+
+-- initialize default authentication
+initializeDefaultAuth:
+INSERT INTO UserAuthentication(pswd, last_login, is_logged_in)
+VALUES ('Passwords', 0, 0);
+
+-- replace default authentication
+replaceDefaultAuth:
+REPLACE INTO UserAuthentication(pswd, last_login, is_logged_in)
+VALUES ('12345678', 0, 0);
+
+-- get current login status
+getCurrentLoginStatus {
+    SELECT is_logged_in FROM UserAuthentication LIMIT 1;
+}
+
+-- get current password
+getCurrentPassword {
+    SELECT pswd FROM UserAuthentication LIMIT 1;
+}
+
+-- force login
+forceLogin {
+    UPDATE UserAuthentication
+    SET is_logged_in = 1,
+        last_login = (strftime('%s', 'now'))
+    WHERE pswd IS NOT NULL;
+}
+
+-- check session validity
+checkSessionValidity {
+    SELECT
+        CASE
+            WHEN ((strftime('%s', 'now') - last_login) <= 3900) AND is_logged_in = 1
+            THEN 1
+            ELSE 0
+        END
+    FROM UserAuthentication
+    WHERE is_logged_in = 1;
+}
+
+-- get last login timestamp
+getLastLoginTimestamp {
+    SELECT last_login
+    FROM UserAuthentication
+    WHERE is_logged_in = 1
+    LIMIT 1;
+}

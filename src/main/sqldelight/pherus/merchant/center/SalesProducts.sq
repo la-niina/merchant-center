@@ -1,0 +1,24 @@
+CREATE TABLE SalesProducts (
+  pid INTEGER PRIMARY KEY NOT NULL UNIQUE,
+  productName TEXT NOT NULL CHECK(length(productName) > 0),
+  qty TEXT NOT NULL CHECK(CAST(qty AS INTEGER) >= 0),
+  time TEXT NOT NULL,
+  price TEXT NOT NULL CHECK(CAST(price AS REAL) >= 0)
+);
+
+-- Insert statement
+insertProduct:
+INSERT INTO SalesProducts (pid, productName, qty, time, price)
+VALUES (?, ?, ?, ?, ?);
+
+-- Query all products
+selectAll:
+SELECT * FROM SalesProducts;
+
+-- Delete by ID
+deleteById:
+DELETE FROM SalesProducts WHERE pid = ?;
+
+-- Delete All
+deleteAll:
+DELETE FROM SalesProducts;
