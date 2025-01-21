@@ -17,9 +17,9 @@ jobs:
         uses: actions/checkout@v2
 
       - name: Set up JDK
-        uses: actions/setup-java@v4.6.0  # Update to v3
+        uses: actions/setup-java@v3
         with:
-          java-version: '21'  # Specify the JDK version you need
+          java-version: '11'  # Specify the JDK version you need
           distribution: 'adopt'
 
       - name: Build with Gradle
@@ -31,9 +31,18 @@ jobs:
       - name: Package the application
         run: ./gradlew jpackage  # Package your application
 
+      - name: List build directory
+        run: |
+          dir build\*  # List files in the build directory
+
       - name: Archive build artifacts
         if: success()
-        uses: actions/upload-artifact@v3  # Update to v3
+        uses: actions/upload-artifact@v3
         with:
           name: windows-build-artifacts
-          path: build/distributions  # Adjust according to your output path
+          path: |
+            build/**/*.exe
+            build/**/*.msi
+            build/**/*-*.exe
+            build/**/*-*.msi
+          if-no-files-found: warn
