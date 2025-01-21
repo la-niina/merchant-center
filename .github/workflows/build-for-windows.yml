@@ -42,7 +42,7 @@ jobs:
         run: ./gradlew test
 
       - name: Package the application
-        run: ./gradlew packageMsi
+        run: ./gradlew packageReleaseMsi
 
       - name: List MSI directory
         run: |
