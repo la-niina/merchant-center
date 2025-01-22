@@ -6,15 +6,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DatePickerState
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -24,10 +30,12 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -65,7 +73,7 @@ import java.time.format.DateTimeFormatter
 import javax.swing.JOptionPane
 
 enum class ReportPeriod {
-    WEEKLY, MONTHLY, YEARLY
+    CUSTOM, WEEKLY, MONTHLY, YEARLY
 }
 
 enum class ExportFormat {
@@ -77,41 +85,46 @@ enum class ExportFormat {
 fun ReportsComponent(
     mainViewModel: MainViewModel = MainViewModel()
 ) {
-    var selectedPeriod by remember { mutableStateOf(ReportPeriod.MONTHLY) }
+    var selectedPeriod by remember { mutableStateOf(ReportPeriod.WEEKLY) }
+    var startDate by remember { mutableStateOf(LocalDate.now().minusWeeks(1)) }
+    var endDate by remember { mutableStateOf(LocalDate.now()) }
     var isExportDialogVisible by remember { mutableStateOf(false) }
     var expandDropDown by remember { mutableStateOf(false) }
+    var isDateRangePickerVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        mainViewModel.loadCurrentDateTime()
+        mainViewModel.loadProducts()
+        mainViewModel.loadAllProducts()
+    }
+
     val coroutineScope = rememberCoroutineScope()
-    val products by mainViewModel.productsList.collectAsState()
+    val products by mainViewModel.allproductsList.collectAsState()
 
-    // Function to filter products based on selected period
+    // Enhanced filtering function with custom date range support
     fun filterProductsByPeriod(products: List<SalesProducts>): List<SalesProducts> {
-        val currentDate = LocalDate.now()
-        return when (selectedPeriod) {
-            ReportPeriod.WEEKLY -> products.filter { product ->
-                try {
-                    val productDate = LocalDateTime.parse(product.time).toLocalDate()
-                    productDate.isAfter(currentDate.minusWeeks(1))
-                } catch (e: Exception) {
-                    false
-                }
-            }
+        return products.filter { product ->
+            try {
+                val productDate = parseProductDate(product.time)
+                when (selectedPeriod) {
+                    ReportPeriod.WEEKLY ->
+                        productDate.isAfter(LocalDate.now().minusWeeks(1)) ||
+                                productDate.isEqual(LocalDate.now().minusWeeks(1))
 
-            ReportPeriod.MONTHLY -> products.filter { product ->
-                try {
-                    val productDate = LocalDateTime.parse(product.time).toLocalDate()
-                    productDate.isAfter(currentDate.minusMonths(1))
-                } catch (e: Exception) {
-                    false
-                }
-            }
+                    ReportPeriod.MONTHLY ->
+                        productDate.isAfter(LocalDate.now().minusMonths(1)) ||
+                                productDate.isEqual(LocalDate.now().minusMonths(1))
 
-            ReportPeriod.YEARLY -> products.filter { product ->
-                try {
-                    val productDate = LocalDateTime.parse(product.time).toLocalDate()
-                    productDate.isAfter(currentDate.minusYears(1))
-                } catch (e: Exception) {
-                    false
+                    ReportPeriod.YEARLY ->
+                        productDate.isAfter(LocalDate.now().minusYears(1)) ||
+                                productDate.isEqual(LocalDate.now().minusYears(1))
+
+                    ReportPeriod.CUSTOM ->
+                        (productDate.isAfter(startDate.minusDays(1)) &&
+                                productDate.isBefore(endDate.plusDays(1)))
                 }
+            } catch (e: Exception) {
+                false
             }
         }
     }
@@ -148,16 +161,36 @@ fun ReportsComponent(
 
                 ExposedDropdownMenu(
                     expanded = expandDropDown,
-                    onDismissRequest = {
-                        expandDropDown = !expandDropDown
-                    }
+                    onDismissRequest = { expandDropDown = false }
                 ) {
                     ReportPeriod.entries.forEach { period ->
                         DropdownMenuItem(
                             text = { Text(period.name.replaceFirstChar { it.titlecase() }) },
                             onClick = {
                                 selectedPeriod = period
-                                expandDropDown = !expandDropDown
+                                expandDropDown = false
+
+                                // Set default date ranges for predefined periods
+                                when (period) {
+                                    ReportPeriod.WEEKLY -> {
+                                        startDate = LocalDate.now().minusWeeks(1)
+                                        endDate = LocalDate.now()
+                                    }
+
+                                    ReportPeriod.MONTHLY -> {
+                                        startDate = LocalDate.now().minusMonths(1)
+                                        endDate = LocalDate.now()
+                                    }
+
+                                    ReportPeriod.YEARLY -> {
+                                        startDate = LocalDate.now().minusYears(1)
+                                        endDate = LocalDate.now()
+                                    }
+
+                                    ReportPeriod.CUSTOM -> {
+                                        isDateRangePickerVisible = true
+                                    }
+                                }
                             }
                         )
                     }
@@ -177,6 +210,19 @@ fun ReportsComponent(
             }
         }
 
+        // Date Range Picker for Custom Period
+        if (selectedPeriod == ReportPeriod.CUSTOM && isDateRangePickerVisible) {
+            DateRangePicker(
+                onDateRangeSelected = { start, end ->
+                    startDate = start
+                    endDate = end
+                    isDateRangePickerVisible = false
+                },
+                initialStartDate = startDate,
+                initialEndDate = endDate
+            )
+        }
+
         // Export Preview (Always Visible)
         if (exportPreviewData.isNotEmpty()) {
             ElevatedCard(
@@ -194,7 +240,7 @@ fun ReportsComponent(
                     )
 
                     Text(
-                        text = "Total Products: ${exportPreviewData.size}",
+                        text = "Total Sales: ${exportPreviewData.size}",
                         style = MaterialTheme.typography.bodyMedium
                     )
 
@@ -211,7 +257,7 @@ fun ReportsComponent(
                     LazyColumn(
                         modifier = Modifier.heightIn(max = 200.dp)
                     ) {
-                        items(exportPreviewData.take(5)) { product ->
+                        items(exportPreviewData) { product ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -220,6 +266,10 @@ fun ReportsComponent(
                             ) {
                                 Text(
                                     text = product.productName,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    text = product.qty,
                                     style = MaterialTheme.typography.bodySmall
                                 )
                                 Text(
@@ -265,6 +315,8 @@ fun ReportsComponent(
                             viewModel = mainViewModel,
                             period = selectedPeriod,
                             format = format,
+                            startDate = startDate,
+                            endDate = endDate,
                             products = exportPreviewData
                         )
                     }
@@ -273,6 +325,184 @@ fun ReportsComponent(
             )
         }
     }
+}
+
+// Utility extension function for more flexible date range checking
+fun LocalDate.isInRange(start: LocalDate, end: LocalDate): Boolean {
+    return !this.isBefore(start) && !this.isAfter(end)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DateRangePicker(
+    onDateRangeSelected: (LocalDate, LocalDate) -> Unit,
+    initialStartDate: LocalDate = LocalDate.now().minusDays(30),
+    initialEndDate: LocalDate = LocalDate.now()
+) {
+    var startDate by remember { mutableStateOf(initialStartDate) }
+    var endDate by remember { mutableStateOf(initialEndDate) }
+    var showStartDatePicker by remember { mutableStateOf(false) }
+    var showEndDatePicker by remember { mutableStateOf(false) }
+
+    // Date selection validation
+    val isValidDateRange = !startDate.isAfter(endDate)
+
+    Column(
+        modifier = Modifier
+            .width(350.dp)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Start Date Selection
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.CalendarMonth,
+                contentDescription = "Start Date",
+                tint = MaterialTheme.colorScheme.primary
+            )
+
+            OutlinedButton(
+                onClick = { showStartDatePicker = true },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Start Date: ${formatLocalDate(startDate)}")
+            }
+        }
+
+        // End Date Selection
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.CalendarMonth,
+                contentDescription = "End Date",
+                tint = MaterialTheme.colorScheme.primary
+            )
+
+            OutlinedButton(
+                onClick = { showEndDatePicker = true },
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("End Date: ${formatLocalDate(endDate)}")
+            }
+        }
+
+        // Date Range Validation Message
+        if (!isValidDateRange) {
+            Text(
+                text = "Start date must be before or equal to end date",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+
+        // Confirm Button
+        Button(
+            onClick = { onDateRangeSelected(startDate, endDate) },
+            enabled = isValidDateRange,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Confirm Date Range")
+        }
+
+        // Start Date Picker Dialog
+        if (showStartDatePicker) {
+            DatePickerDialog(
+                onDismissRequest = { showStartDatePicker = false },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showStartDatePicker = false
+                            // Ensure start date is not after end date
+                            if (startDate.isAfter(endDate)) {
+                                startDate = endDate
+                            }
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showStartDatePicker = false }) {
+                        Text("Cancel")
+                    }
+                },
+                shape = RoundedCornerShape(5)
+            ) {
+                DatePicker(
+                    state = rememberDatePickerState(
+                        initialSelectedDateMillis = startDate.atStartOfDay()
+                            .toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+                    ),
+                    title = { Text("Select Start Date") },
+                    headline = {
+                        Text(formatLocalDate(startDate))
+                    },
+                    modifier = Modifier.padding(10.dp).height(400.dp)
+                )
+            }
+        }
+
+        // End Date Picker Dialog
+        if (showEndDatePicker) {
+            DatePickerDialog(
+                onDismissRequest = { showEndDatePicker = false },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showEndDatePicker = false
+                            // Ensure end date is not before start date
+                            if (endDate.isBefore(startDate)) {
+                                endDate = startDate
+                            }
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEndDatePicker = false }) {
+                        Text("Cancel")
+                    }
+                },
+                shape = RoundedCornerShape(5)
+            ) {
+                DatePicker(
+                    state = rememberDatePickerState(
+                        initialSelectedDateMillis = endDate.atStartOfDay()
+                            .toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+                    ),
+                    title = { Text("Select End Date") },
+                    headline = {
+                        Text(formatLocalDate(endDate))
+                    },
+                    modifier = Modifier.padding(10.dp).height(400.dp)
+                )
+            }
+        }
+    }
+}
+
+// Utility function to format LocalDate
+fun formatLocalDate(date: LocalDate): String {
+    return date.format(DateTimeFormatter.ISO_LOCAL_DATE)
+}
+
+// Companion function to update date from DatePicker state
+@OptIn(ExperimentalMaterial3Api::class)
+fun updateDateFromPickerState(
+    state: DatePickerState,
+    currentDate: LocalDate
+): LocalDate {
+    return state.selectedDateMillis?.let { millis ->
+        LocalDate.ofEpochDay(millis / 86400000)
+    } ?: currentDate
 }
 
 // Improved CSV Export
@@ -470,45 +700,25 @@ fun ExportReportDialog(
 
 // Modify the date parsing function
 fun parseProductDate(timeString: String): LocalDate {
-    return try {
-        // Try multiple parsing strategies
-        listOf(
-            DateTimeFormatter.ISO_LOCAL_DATE_TIME,
-            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
-            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSS")
-        ).firstNotNullOf { formatter ->
-            try {
-                LocalDateTime.parse(timeString, formatter).toLocalDate()
-            } catch (e: Exception) {
-                null
-            }
-        }
-    } catch (e: Exception) {
-        // Fallback to current date if parsing fails
-        LocalDate.now()
-    }
-}
+    val parsers = listOf(
+        DateTimeFormatter.ISO_LOCAL_DATE_TIME,
+        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd"),
+        DateTimeFormatter.ofPattern("dd-MM-yyyy"),
+        DateTimeFormatter.ofPattern("MM/dd/yyyy")
+    )
 
-// Update the filtering function
-fun filterProductsByPeriod(
-    products: List<SalesProducts>,
-    selectedPeriod: ReportPeriod
-): List<SalesProducts> {
-    val currentDate = LocalDate.now()
-    return products.filter { product ->
+    for (parser in parsers) {
         try {
-            val productDate = parseProductDate(product.time)
-            when (selectedPeriod) {
-                ReportPeriod.WEEKLY -> productDate.isAfter(currentDate.minusWeeks(1))
-                ReportPeriod.MONTHLY -> productDate.isAfter(currentDate.minusMonths(1))
-                ReportPeriod.YEARLY -> productDate.isAfter(currentDate.minusYears(1))
-            }
+            return LocalDateTime.parse(timeString, parser).toLocalDate()
         } catch (e: Exception) {
-            // Log the error or handle it appropriately
-            println("Error parsing date for product: ${product.time}")
-            false
+            continue
         }
     }
+
+    // Fallback to current date if parsing fails
+    println("Failed to parse date: $timeString")
+    return LocalDate.now()
 }
 
 // Modify the export report function
@@ -516,6 +726,8 @@ fun exportReport(
     viewModel: MainViewModel,
     period: ReportPeriod,
     format: ExportFormat,
+    startDate: LocalDate = LocalDate.now().minusWeeks(1),
+    endDate: LocalDate = LocalDate.now(),
     products: List<SalesProducts>
 ) {
     val currentDate = LocalDate.now()
@@ -528,6 +740,7 @@ fun exportReport(
                 ReportPeriod.WEEKLY -> productDate.isAfter(currentDate.minusWeeks(1))
                 ReportPeriod.MONTHLY -> productDate.isAfter(currentDate.minusMonths(1))
                 ReportPeriod.YEARLY -> productDate.isAfter(currentDate.minusYears(1))
+                ReportPeriod.CUSTOM -> productDate.isInRange(startDate, endDate)
             }
         } catch (e: Exception) {
             println("Error filtering product: ${product.time}")
@@ -594,8 +807,7 @@ fun exportToPdf(products: List<SalesProducts>, file: File) {
             val totalProducts = products.size
             val totalQuantity = products.sumOf { it.qty.toIntOrNull() ?: 0 }
             val totalValue = products.sumOf {
-                (it.qty.toIntOrNull() ?: 0) *
-                        (it.price.replace(",", "").toDoubleOrNull() ?: 0.0)
+                (it.price.replace(",", "").toDoubleOrNull() ?: 0.0)
             }
 
             contentStream.beginText()
@@ -603,9 +815,9 @@ fun exportToPdf(products: List<SalesProducts>, file: File) {
             contentStream.newLineAtOffset(margin, pageHeight - margin - 30f)
             contentStream.showText("Total Products: $totalProducts")
             contentStream.newLineAtOffset(0f, -20f)
-            contentStream.showText("Total Quantity: $totalQuantity")
+            contentStream.showText("Sold Items: $totalQuantity")
             contentStream.newLineAtOffset(0f, -20f)
-            contentStream.showText("Total Value: UGX ${"%,d".format(totalValue.toLong())}")
+            contentStream.showText("Total Value: ${"%,d".format(totalValue.toLong())} UGX")
             contentStream.endText()
 
             // Table Header
@@ -636,8 +848,7 @@ fun exportToPdf(products: List<SalesProducts>, file: File) {
             products.forEach { product ->
                 // Calculate total price for this product
                 val unitPrice = product.price.replace(",", "").toDoubleOrNull() ?: 0.0
-                val quantity = product.qty.toIntOrNull() ?: 0
-                val totalPrice = unitPrice * quantity
+                val perItem = unitPrice / (product.qty.toIntOrNull() ?: 0)
 
                 contentStream.beginText()
                 contentStream.setFont(PDType1Font.HELVETICA, 10f)
@@ -646,9 +857,9 @@ fun exportToPdf(products: List<SalesProducts>, file: File) {
                 contentStream.newLineAtOffset(110f, 0f)
                 contentStream.showText(product.qty)
                 contentStream.newLineAtOffset(110f, 0f)
-                contentStream.showText("UGX ${"%,d".format(unitPrice.toLong())}")
+                contentStream.showText("${"%,d".format(perItem.toLong())} UGX")
                 contentStream.newLineAtOffset(110f, 0f)
-                contentStream.showText("UGX ${"%,d".format(totalPrice.toLong())}")
+                contentStream.showText("${"%,d".format(unitPrice.toLong())} UGX")
                 contentStream.newLineAtOffset(110f, 0f)
                 contentStream.showText(formatDateForPdfExport(product.time))
                 contentStream.endText()

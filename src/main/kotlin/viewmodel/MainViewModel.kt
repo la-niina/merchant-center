@@ -30,6 +30,9 @@ class MainViewModel {
     private val _productsList = MutableStateFlow<List<SalesProducts>>(emptyList())
     val productsList: StateFlow<List<SalesProducts>> = _productsList.asStateFlow()
 
+    private val _allproductsList = MutableStateFlow<List<SalesProducts>>(emptyList())
+    val allproductsList: StateFlow<List<SalesProducts>> = _allproductsList.asStateFlow()
+
     private val _currentDateTime = MutableStateFlow(getCurrentFormattedDateTime())
     val currentDateTime: StateFlow<String> = _currentDateTime.asStateFlow()
 
@@ -41,6 +44,7 @@ class MainViewModel {
 
     init {
         loadProducts()
+        loadAllProducts()
     }
 
     suspend fun loadCurrentDateTime() {
@@ -56,15 +60,22 @@ class MainViewModel {
         }
     }
 
+    fun loadAllProducts() {
+        try {
+            val products = queries.selectAll().executeAsList().map { it.toSalesProduct() }
+            _allproductsList.value = products
+        } catch (e: Exception) {
+            println("Error loading products: ${e.message}")
+            _allproductsList.value = emptyList()
+        }
+    }
+
     fun loadProducts() {
         try {
             val currentDate = LocalDate.now().toString()
-            val products = queries.selectAll()
-                .executeAsList()
-                .filter { product ->
+            val products = queries.selectAll().executeAsList().filter { product ->
                     product.time.startsWith(currentDate)
-                }
-                .map { it.toSalesProduct() }
+                }.map { it.toSalesProduct() }
             _productsList.value = products
         } catch (e: Exception) {
             println("Error loading products: ${e.message}")
@@ -74,6 +85,21 @@ class MainViewModel {
 
     fun refreshProducts() {
         loadProducts()
+    }
+
+    private fun getTotalPriceOfProducts(): Double {
+        try {
+            val currentDate = LocalDate.now().toString()
+            val products = queries.selectAll().executeAsList().filter { product ->
+                    product.time.startsWith(currentDate)
+                }
+            return products.sumOf { product ->
+                product.price.toDoubleOrNull() ?: 0.0
+            }
+        } catch (e: Exception) {
+            println("Error calculating total price: ${e.message}")
+            return 0.0
+        }
     }
 
     private fun getTotalPriceOfAllProducts(): Double {
@@ -89,9 +115,7 @@ class MainViewModel {
     }
 
     suspend fun addProduct(
-        productName: String,
-        qty: Int,
-        price: Double
+        productName: String, qty: Int, price: Double
     ) {
         try {
             mutex.withLock {
@@ -150,7 +174,12 @@ class MainViewModel {
 
     fun getFormattedTotalPriceOfAllProducts(): String {
         val totalPrice = getTotalPriceOfAllProducts()
-        return "UGX ${"%,d".format(totalPrice.toLong())}"
+        return "${"%,d".format(totalPrice.toLong())} UGX"
+    }
+
+    fun getFormattedTotalPriceOfProducts(): String {
+        val totalPrice = getTotalPriceOfProducts()
+        return "${"%,d".format(totalPrice.toLong())} UGX"
     }
 
     // Generate a unique numeric ID
@@ -166,11 +195,7 @@ class MainViewModel {
     // Extension function to convert database result to domain model
     private fun pherus.merchant.center.SalesProducts.toSalesProduct(): SalesProducts {
         return SalesProducts(
-            pid = pid,
-            productName = productName,
-            qty = qty,
-            time = time,
-            price = price
+            pid = pid, productName = productName, qty = qty, time = time, price = price
         )
     }
 
@@ -187,18 +212,12 @@ class MainViewModel {
 
 
 data class SalesProducts(
-    val pid: Int,
-    val productName: String,
-    val qty: String,
-    val time: String,
-    val price: String
+    val pid: Int, val productName: String, val qty: String, val time: String, val price: String
 ) {
     // Comprehensive validation with UGX-specific constraints
     fun isValid(): Boolean =
-        productName.isNotBlank() &&
-                productName.length <= 100 &&
-                qty.toIntOrNull()?.let { it >= 0 } ?: false &&
-                price.toDoubleOrNull()?.let { it >= 0.0 } ?: false
+        productName.isNotBlank() && productName.length <= 100 && qty.toIntOrNull()
+            ?.let { it >= 0 } ?: false && price.toDoubleOrNull()?.let { it >= 0.0 } ?: false
 
     // Formatted price in UGX with locale-specific formatting
     fun formattedPrice(): String {
@@ -211,8 +230,7 @@ data class SalesProducts(
     }
 
     // Formatted time in a readable format
-    fun formattedTime(): String =
-        time.takeIf { it.isNotBlank() }?.let {
-            LocalDateTime.parse(it).format(DateTimeFormatter.ofPattern("h:mm a"))
-        } ?: "Unknown Time"
+    fun formattedTime(): String = time.takeIf { it.isNotBlank() }?.let {
+        LocalDateTime.parse(it).format(DateTimeFormatter.ofPattern("h:mm a"))
+    } ?: "Unknown Time"
 }

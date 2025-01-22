@@ -13,24 +13,30 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write  # Explicitly grant permissions for release creation
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for proper versioning
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
+          cache: 'gradle'  # Enable Gradle caching
 
       - name: Get version from tag or use default
         id: get_version
         shell: pwsh
         run: |
-          $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          if (-not $version) {
-            $version = "1.0.1-snapshot"
+          $version = if ($env:GITHUB_REF.StartsWith("refs/tags/v")) {
+              $env:GITHUB_REF.Substring(11)  # Remove 'refs/tags/v'
+          } else {
+              "1.0.1-snapshot"
           }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           echo "Detected version: $version"
@@ -42,76 +48,74 @@ jobs:
 
       - name: Build with Gradle
         run: |
-          ./gradlew build
+          ./gradlew build --info
           echo "Build completed successfully"
 
       - name: Run tests
         run: |
-          ./gradlew test
+          ./gradlew test --info
           echo "Tests completed successfully"
 
       - name: Package the application
         run: |
-          ./gradlew packageReleaseMsi -Pversion=${{ steps.get_version.outputs.VERSION }}
+          ./gradlew packageReleaseMsi --info -Pversion=${{ steps.get_version.outputs.VERSION }}
           echo "Packaging completed"
 
-      - name: List MSI directory
+      - name: Verify MSI creation
+        shell: pwsh
         run: |
-          dir "build\compose\binaries\main\msi"
+          $msiPath = "build\compose\binaries\main-release\msi"
+          if (!(Test-Path $msiPath)) {
+              echo "::error::MSI directory not found at: $msiPath"
+              exit 1
+          }
+          echo "MSI directory exists at: $msiPath"
+          Get-ChildItem -Path $msiPath -Recurse
 
       - name: Find MSI file
         id: find_msi
         shell: pwsh
         run: |
-          $msiFile = Get-ChildItem -Path "build\compose\binaries\main\msi" -Filter "*.msi" | Select-Object -First 1
+          $msiPath = "build\compose\binaries\main-release\msi"
+          $msiFile = Get-ChildItem -Path $msiPath -Filter "*.msi" -Recurse | Select-Object -First 1
           if ($msiFile) {
-            echo "MSI_PATH=$($msiFile.FullName)" >> $env:GITHUB_OUTPUT
-            echo "MSI_NAME=$($msiFile.Name)" >> $env:GITHUB_OUTPUT
-            echo "Found MSI: $($msiFile.FullName)"
+              $relativePath = $msiFile.FullName.Replace($env:GITHUB_WORKSPACE + "\", "")
+              echo "MSI_PATH=$relativePath" >> $env:GITHUB_OUTPUT
+              echo "MSI_NAME=$($msiFile.Name)" >> $env:GITHUB_OUTPUT
+              echo "Found MSI at: $relativePath"
           } else {
-            echo "No MSI file found"
-            exit 1
+              echo "::error::No MSI file found in $msiPath"
+              exit 1
           }
 
-      - name: Uninstall Previous Version (if exists)
-        shell: pwsh
-        run: |
-          $appName = "Merchant Center"
-          $installed = Get-WmiObject -Query "SELECT * FROM Win32_Product WHERE Name = '$appName'"
-          if ($installed) {
-            Write-Host "Uninstalling previous version of $appName..."
-            $installed | ForEach-Object { $_.Uninstall() }
-            Write-Host "$appName uninstalled successfully."
-          } else {
-            Write-Host "$appName is not installed."
-          }
-
-      - name: Archive Build Artifacts
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: windows-msi-artifacts
+          name: windows-msi-installer
           path: ${{ steps.find_msi.outputs.MSI_PATH }}
           retention-days: 5
           if-no-files-found: error
 
-      - name: Create GitHub Release
+      - name: Create Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ steps.find_msi.outputs.MSI_PATH }}
+          name: Release ${{ steps.get_version.outputs.VERSION }}
           draft: false
           prerelease: false
+          fail_on_unmatched_files: true
+          generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Use default token
 
-      # Fallback release creation method
-      - name: Fallback Release Creation
+      - name: Upload Release Asset (Fallback)
         if: failure() && startsWith(github.ref, 'refs/tags/v')
-        uses: actions/create-release@v1
+        uses: actions/upload-release-asset@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ steps.get_version.outputs.VERSION }}
-          draft: false
-          prerelease: true
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.find_msi.outputs.MSI_PATH }}
+          asset_name: ${{ steps.find_msi.outputs.MSI_NAME }}
+          asset_content_type: application/x-msi
