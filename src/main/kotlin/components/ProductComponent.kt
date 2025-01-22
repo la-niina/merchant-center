@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
@@ -64,8 +65,15 @@ fun ProductComponent(
 
     val overview = listOf(
         OverviewItem(title = "Stocks Flow", value = stockState.products.size.toString()),
-        OverviewItem(title = "Expenses", value = formatCurrency(stockState.totalInventoryValue)),
-        OverviewItem(title = "Sales FLow", value = formatCurrency(stockState.totalSales))
+        OverviewItem(
+            title = "Current Inventory Value",
+            value = formatCurrency(stockState.totalInventoryValue)
+        ),
+        OverviewItem(title = "Sales FLow", value = formatCurrency(stockState.totalSales)),
+        OverviewItem(
+            title = "Low Stock Products",
+            value = stockState.lowStockProducts.size.toString()
+        )
     )
 
     Surface(
@@ -103,7 +111,15 @@ fun ProductComponent(
             }) { product ->
                 ProductCard(
                     product = product,
-                    onDelete = { stockViewModel.deleteProduct(product.id) }
+                    onDelete = { stockViewModel.deleteProduct(product.id) },
+                    onAddStock = {
+                        // edit product stock
+                        stockViewModel.updateStock(product.id, 1)
+                    },
+                    onSubtractStock = {
+                        // subtract product stock
+                        stockViewModel.updateStock(product.id, -1)
+                    }
                 )
             }
 
@@ -244,27 +260,59 @@ fun ActionSection(
 @Composable
 fun ProductCard(
     product: StockViewModel.Product,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onAddStock: () -> Unit,
+    onSubtractStock: () -> Unit
 ) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = Color.Yellow.copy(alpha = 0.2f)
+            // handle low stock
+            containerColor = if (product.currentStock < product.minimumStockThreshold) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            },
         )
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = product.id)
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        Icons.Rounded.Delete,
-                        contentDescription = "Delete Product"
-                    )
+                Text(
+                    text = product.id,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Rounded.Delete,
+                            contentDescription = "Delete Product"
+                        )
+                    }
+                    IconButton(onClick = onAddStock) {
+                        Icon(
+                            Icons.Rounded.Add,
+                            contentDescription = "Add Stock"
+                        )
+                    }
+                    IconButton(onClick = onSubtractStock) {
+                        Icon(
+                            Icons.Rounded.Remove,
+                            contentDescription = "Subtract Stock"
+                        )
+                    }
                 }
             }
 

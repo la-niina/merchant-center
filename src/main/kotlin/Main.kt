@@ -23,6 +23,7 @@ fun main() = application {
 
     LaunchedEffect(Unit, mainViewModel) {
         mainViewModel.loadProducts()
+        mainViewModel.loadAllProducts()
         mainViewModel.loadCurrentDateTime()
     }
 

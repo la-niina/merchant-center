@@ -31,11 +31,13 @@ fun NavControllers(
         when (currentRoute) {
             Route.Sales -> mainViewModel.loadProducts()
             Route.Products -> stockViewModel.fetchProducts()
-            Route.Reports -> mainViewModel.loadProducts()
+            Route.Reports -> mainViewModel.loadAllProducts()
         }
     }
 
     LaunchedEffect(Unit, mainViewModel) {
+        mainViewModel.loadProducts()
+        mainViewModel.loadAllProducts()
         mainViewModel.loadCurrentDateTime()
     }
 

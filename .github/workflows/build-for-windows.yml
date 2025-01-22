@@ -36,7 +36,7 @@ jobs:
           $version = if ($env:GITHUB_REF.StartsWith("refs/tags/v")) {
               $env:GITHUB_REF.Substring(11)  # Remove 'refs/tags/v'
           } else {
-              "1.0.1-snapshot"
+              "1.1.1"
           }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           echo "Detected version: $version"
@@ -107,7 +107,7 @@ jobs:
           fail_on_unmatched_files: true
           generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN || secrets.TOKEN }}  # Use default token
+          GITHUB_TOKEN: ${{ secrets.TOKEN }}  # Use default token
 
       - name: Upload Release Asset (Fallback)
         if: failure() && startsWith(github.ref, 'refs/tags/v')

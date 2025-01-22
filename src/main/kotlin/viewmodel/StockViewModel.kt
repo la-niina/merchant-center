@@ -182,7 +182,7 @@ class StockViewModel {
         }
     }
 
-    fun calculateInventoryValue() {
+    private fun calculateInventoryValue() {
         try {
             val inventoryValue = queries.getTotalInventoryValue().executeAsOne()
             _stockState.update {
