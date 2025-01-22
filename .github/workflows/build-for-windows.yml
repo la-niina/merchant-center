@@ -63,7 +63,7 @@ jobs:
         id: find_msi
         shell: pwsh
         run: |
-          $msiFile = Get-ChildItem -Path "build\compose\binaries\main\msi" -Filter "*.msi" | Select-Object -First 1
+          $msiFile = Get-ChildItem -Path "build\compose\binaries\main-release\msi" -Filter "*.msi" | Select-Object -First 1
           if ($msiFile) {
             echo "MSI_PATH=$($msiFile.FullName)" >> $env:GITHUB_OUTPUT
             echo "MSI_NAME=$($msiFile.Name)" >> $env:GITHUB_OUTPUT
