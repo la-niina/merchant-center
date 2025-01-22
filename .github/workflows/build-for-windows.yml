@@ -37,6 +37,7 @@ jobs:
               $env:GITHUB_REF.Substring(11)  # Remove 'refs/tags/v'
           } else {
               "1.1.1"
+          }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           echo "Detected version: $version"
 
