@@ -37,7 +37,6 @@ jobs:
               $env:GITHUB_REF.Substring(11)  # Remove 'refs/tags/v'
           } else {
               "1.1.1"
-          }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           echo "Detected version: $version"
 
@@ -58,7 +57,7 @@ jobs:
 
       - name: Package the application
         run: |
-          ./gradlew packageReleaseMsi --info -Pversion=${{ steps.get_version.outputs.VERSION }}
+          ./gradlew packageReleaseMsi --info
           echo "Packaging completed"
 
       - name: Verify MSI creation
