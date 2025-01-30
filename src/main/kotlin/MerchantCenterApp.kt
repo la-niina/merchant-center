@@ -6,15 +6,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import navigation.NavControllers
 import navigation.Route
-import viewmodel.AuthViewModel
 import viewmodel.MainViewModel
-import viewmodel.StockViewModel
 
 @Composable
 fun MerchantCenterApp(
     mainViewModel: MainViewModel,
-    authViewModel: AuthViewModel,
-    stockViewModel: StockViewModel
 ) {
     Surface(
         modifier = Modifier.fillMaxSize().background(
@@ -24,8 +20,6 @@ fun MerchantCenterApp(
         NavControllers(
             startDestination = Route.Sales,
             mainViewModel = mainViewModel,
-            authViewModel = authViewModel,
-            stockViewModel = stockViewModel
         )
     }
 }

@@ -11,26 +11,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import components.HeaderComponent
-import components.ProductComponent
 import components.ReportsComponent
 import components.SalesComponent
-import viewmodel.AuthViewModel
 import viewmodel.MainViewModel
-import viewmodel.StockViewModel
 
 @Composable
 fun NavControllers(
     startDestination: Route = Route.Sales,
     mainViewModel: MainViewModel = MainViewModel(),
-    authViewModel: AuthViewModel = AuthViewModel(),
-    stockViewModel: StockViewModel = StockViewModel()
 ) {
     var currentRoute by remember { mutableStateOf(startDestination) }
 
     LaunchedEffect(Unit, currentRoute) {
         when (currentRoute) {
             Route.Sales -> mainViewModel.loadProducts()
-            Route.Products -> stockViewModel.fetchProducts()
             Route.Reports -> mainViewModel.loadAllProducts()
         }
     }
@@ -53,15 +47,6 @@ fun NavControllers(
             when (currentRoute) {
                 Route.Sales -> SalesComponent(
                     mainViewModel = mainViewModel,
-                    stockViewModel = stockViewModel,
-                )
-
-                Route.Products -> ProductComponent(
-                    authViewModel = authViewModel,
-                    stockViewModel = stockViewModel,
-                    on = {
-                        currentRoute = Route.Sales
-                    }
                 )
 
                 Route.Reports -> ReportsComponent(

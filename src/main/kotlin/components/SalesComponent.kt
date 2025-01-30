@@ -20,11 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.MonetizationOn
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -55,12 +51,10 @@ import presentation.SalesTotal
 import presentation.SearchTextField
 import viewmodel.MainViewModel
 import viewmodel.SalesProducts
-import viewmodel.StockViewModel
 
 @Composable
 fun SalesComponent(
     mainViewModel: MainViewModel = MainViewModel(),
-    stockViewModel: StockViewModel = StockViewModel(),
 ) {
     var searchInput by rememberSaveable { mutableStateOf("") }
     var showAddSaleDialog by rememberSaveable { mutableStateOf(false) }
@@ -93,7 +87,7 @@ fun SalesComponent(
             SalesSectionHeader(
                 searchInput = searchInput,
                 onSearchChange = { searchInput = it },
-                onAddSaleClick = { showAddSaleDialog = !showAddSaleDialog }
+                onAddSaleClick = { showAddSaleDialog = true }
             )
 
             // Sales List
@@ -111,8 +105,7 @@ fun SalesComponent(
         // Add Sale Dialog
         if (showAddSaleDialog) {
             AddSaleDialog(
-                onDismiss = { showAddSaleDialog = !showAddSaleDialog },
-                stockViewModel = stockViewModel,
+                onDismissRequest = { showAddSaleDialog = false },
                 onAddSale = { name, qty, price ->
                     coroutineScope.launch {
                         mainViewModel.addProduct(
@@ -120,7 +113,7 @@ fun SalesComponent(
                             qty = qty.toInt(),
                             price = price.toDouble()
                         )
-                        showAddSaleDialog = !showAddSaleDialog
+                        showAddSaleDialog = false
                     }
                 }
             )
@@ -154,7 +147,6 @@ fun SalesSectionHeader(
         }
     }
 }
-
 
 @Composable
 fun SalesProductList(
@@ -226,54 +218,19 @@ fun HeaderColumn(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddSaleDialog(
-    onDismiss: () -> Unit,
+    onDismissRequest: () -> Unit,
     onAddSale: (String, String, String) -> Unit,
-    stockViewModel: StockViewModel = StockViewModel()
 ) {
-    val stockState by stockViewModel.stockState.collectAsState()
-    val scope = rememberCoroutineScope()
+    val coroutineScope = rememberCoroutineScope()
 
-    var selectedProduct by rememberSaveable { mutableStateOf<StockViewModel.Product?>(null) }
     var quantity by rememberSaveable { mutableStateOf("") }
     var price by rememberSaveable { mutableStateOf("") }
     var searchQuery by rememberSaveable { mutableStateOf("") }
 
-    var quantityValidation by remember { mutableStateOf(ValidationState()) }
-    var priceValidation by remember { mutableStateOf(ValidationState()) }
-    var productValidation by remember { mutableStateOf(ValidationState()) }
-
-    var isProductDropdownExpanded by rememberSaveable { mutableStateOf(false) }
-
-    // Filter products based on the search query
-    val filteredProducts = remember(searchQuery, stockState.products) {
-        if (searchQuery.isBlank()) {
-            stockState.products
-        } else {
-            stockState.products.filter {
-                it.productName.contains(searchQuery, ignoreCase = true)
-            }
-        }
-    }
-
-    LaunchedEffect(selectedProduct, quantity) {
-        if (selectedProduct != null && quantity.isNotBlank()) {
-            try {
-                val basePrice = selectedProduct!!.estimatedPrice
-                val quantityInt = quantity.toIntOrNull() ?: 0
-                val calculatedPrice = basePrice * quantityInt
-                price = String.format("%.2f", calculatedPrice)
-                priceValidation = ValidationState()
-            } catch (e: Exception) {
-                priceValidation = ValidationState("Error calculating price", true)
-            }
-        }
-    }
-
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = onDismissRequest,
         properties = DialogProperties(
             dismissOnClickOutside = true,
             dismissOnBackPress = true
@@ -302,133 +259,65 @@ fun AddSaleDialog(
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
-                    IconButton(onClick = onDismiss) {
+                    IconButton(onClick = onDismissRequest) {
                         Icon(Icons.Rounded.Close, "Close dialog")
                     }
                 }
 
                 // Product Selection Dropdown
-                ExposedDropdownMenuBox(
-                    expanded = isProductDropdownExpanded,
-                    onExpandedChange = { isProductDropdownExpanded = it }
-                ) {
-                    OutlinedTextField(
-                        value = selectedProduct?.productName ?: searchQuery,
-                        onValueChange = {
-                            searchQuery = it
-                            if (selectedProduct?.productName != it) {
-                                selectedProduct = null
-                            }
-                            isProductDropdownExpanded = true // Open dropdown when typing
-                        },
-                        label = { Text("Product") },
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = isProductDropdownExpanded)
-                        },
-                        isError = productValidation.isError,
-                        supportingText = {
-                            productValidation.message?.let { Text(it) }
-                        },
-                        colors = ExposedDropdownMenuDefaults.textFieldColors(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .menuAnchor()
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded = isProductDropdownExpanded,
-                        onDismissRequest = { isProductDropdownExpanded = false }
-                    ) {
-                        if (filteredProducts.isEmpty()) {
-                            DropdownMenuItem(
-                                text = { Text("No products found") },
-                                onClick = { },
-                                enabled = false
-                            )
-                        } else {
-                            filteredProducts.forEach { product ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Column {
-                                            Text(product.productName)
-                                            Text(
-                                                "${product.currentStock} in stock",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        selectedProduct = product
-                                        searchQuery = product.productName
-                                        isProductDropdownExpanded = false
-                                        productValidation =
-                                            ValidationState() // Reset validation state
-                                    },
-                                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
-                                )
-                            }
-                        }
-                    }
-                }
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = {
+                        searchQuery = it
+                    },
+                    label = { Text("Product Name") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Done
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 // Quantity Input
                 OutlinedTextField(
                     value = quantity,
-                    onValueChange = { newValue ->
-                        if (newValue.all { it.isDigit() }) {
-                            quantity = newValue
-                            quantityValidation = ValidationState()
-                        }
-                    },
+                    onValueChange = { quantity = it },
                     label = { Text("Quantity") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Number,
                         imeAction = ImeAction.Done
                     ),
-                    isError = quantityValidation.isError,
-                    supportingText = {
-                        quantityValidation.message?.let { Text(it) }
-                    },
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 // Price Display
                 OutlinedTextField(
                     value = price,
-                    onValueChange = { },
+                    onValueChange = { price = it },
                     label = { Text("Total Price (UGX)") },
-                    readOnly = true,
-                    isError = priceValidation.isError,
-                    supportingText = {
-                        priceValidation.message?.let { Text(it) }
-                    },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = ImeAction.Done
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 // Complete Sale Button
                 Button(
                     onClick = {
-                        scope.launch {
-                            if (validateAndSubmitSale(
-                                    selectedProduct,
-                                    quantity,
-                                    price,
-                                    stockViewModel,
-                                    onAddSale,
-                                    onDismiss,
-                                    { productValidation = it },
-                                    { quantityValidation = it },
-                                    { priceValidation = it }
-                                )
-                            ) {
-                                onDismiss()
-                            }
+                        coroutineScope.launch {
+                            onAddSale(
+                                searchQuery,
+                                quantity,
+                                price.trim().replace(",", "")
+                            )
+                            onDismissRequest()
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = selectedProduct != null && quantity.isNotBlank() && price.isNotBlank()
                 ) {
                     Icon(Icons.Rounded.MonetizationOn, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -438,65 +327,3 @@ fun AddSaleDialog(
         }
     }
 }
-
-private suspend fun validateAndSubmitSale(
-    selectedProduct: StockViewModel.Product?,
-    quantity: String,
-    price: String,
-    stockViewModel: StockViewModel,
-    onAddSale: (String, String, String) -> Unit,
-    onDismiss: () -> Unit,
-    updateProductValidation: (ValidationState) -> Unit,
-    updateQuantityValidation: (ValidationState) -> Unit,
-    updatePriceValidation: (ValidationState) -> Unit
-): Boolean {
-    if (selectedProduct == null) {
-        updateProductValidation(ValidationState("Please select a product", true))
-        return false
-    }
-
-    val quantityInt = quantity.toIntOrNull()
-    if (quantityInt == null || quantityInt <= 0) {
-        updateQuantityValidation(ValidationState("Please enter a valid quantity", true))
-        return false
-    }
-
-    if (quantityInt > selectedProduct.currentStock) {
-        updateQuantityValidation(
-            ValidationState(
-                "Insufficient stock (${selectedProduct.currentStock} available)",
-                true
-            )
-        )
-        return false
-    }
-
-    val priceDouble = price.toDoubleOrNull()
-    if (priceDouble == null || priceDouble <= 0) {
-        updatePriceValidation(ValidationState("Invalid price", true))
-        return false
-    }
-
-    try {
-        stockViewModel.sellProduct(selectedProduct.id, quantityInt)
-        onAddSale(
-            selectedProduct.productName,
-            quantityInt.toString(),
-            priceDouble.toString()
-        )
-        return true
-    } catch (e: Exception) {
-        updatePriceValidation(ValidationState("Failed to complete sale: ${e.message}", true))
-        return false
-    }
-}
-
-data class ValidationState(
-    val message: String? = null,
-    val isError: Boolean = false
-)
-
-data class QualityOption(
-    val displayName: String,
-    val multiplier: Double
-)

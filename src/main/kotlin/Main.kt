@@ -11,15 +11,11 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.isTraySupported
 import androidx.compose.ui.window.rememberWindowState
-import viewmodel.AuthViewModel
 import viewmodel.MainViewModel
-import viewmodel.StockViewModel
 
 fun main() = application {
     val windowState = rememberWindowState(size = DpSize(1440.dp, 768.dp))
     val mainViewModel = MainViewModel()
-    val authViewModel = AuthViewModel()
-    val stockViewModel = StockViewModel()
 
     LaunchedEffect(Unit, mainViewModel) {
         mainViewModel.loadProducts()
@@ -48,8 +44,6 @@ fun main() = application {
             Surface(modifier = Modifier.background(MaterialTheme.colorScheme.background)) {
                 MerchantCenterApp(
                     mainViewModel = mainViewModel,
-                    authViewModel = authViewModel,
-                    stockViewModel = stockViewModel
                 )
             }
         }

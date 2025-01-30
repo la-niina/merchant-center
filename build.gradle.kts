@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "pherus.merchant.center"
-version = "1.1-SNAPSHOT"
+version = "1.2-SNAPSHOT"
 
 repositories {
     mavenCentral()
@@ -92,7 +92,7 @@ compose.desktop {
             )
             includeAllModules = true
             packageName = "Merchant Center"
-            packageVersion = "1.1.1"
+            packageVersion = "1.1.2"
             copyright = "© 2025 Pherus all rights reserved"
             description =
                 "Merchant Center is a shop management system for data entries with sale, stocks and export "
