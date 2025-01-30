@@ -58,7 +58,7 @@ jobs:
 
       - name: Package the application
         run: |
-          ./gradlew packageReleaseMsi --info -Pversion=${{ steps.get_version.outputs.VERSION }}
+          ./gradlew packageReleaseMsi --info
           echo "Packaging completed"
 
       - name: Verify MSI creation
