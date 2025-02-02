@@ -7,11 +7,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -20,7 +20,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DatePickerState
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -73,7 +73,7 @@ import java.time.format.DateTimeFormatter
 import javax.swing.JOptionPane
 
 enum class ReportPeriod {
-    CUSTOM, WEEKLY, MONTHLY, YEARLY
+    CUSTOM, DIALY, WEEKLY, MONTHLY, YEARLY
 }
 
 enum class ExportFormat {
@@ -85,7 +85,7 @@ enum class ExportFormat {
 fun ReportsComponent(
     mainViewModel: MainViewModel = MainViewModel()
 ) {
-    var selectedPeriod by remember { mutableStateOf(ReportPeriod.WEEKLY) }
+    var selectedPeriod by remember { mutableStateOf(ReportPeriod.DIALY) }
     var startDate by remember { mutableStateOf(LocalDate.now().minusWeeks(1)) }
     var endDate by remember { mutableStateOf(LocalDate.now()) }
     var isExportDialogVisible by remember { mutableStateOf(false) }
@@ -98,6 +98,7 @@ fun ReportsComponent(
         mainViewModel.loadAllProducts()
     }
 
+    val lazyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val products by mainViewModel.allproductsList.collectAsState()
 
@@ -107,6 +108,10 @@ fun ReportsComponent(
             try {
                 val productDate = parseProductDate(product.time)
                 when (selectedPeriod) {
+                    ReportPeriod.DIALY ->
+                        productDate.isAfter(LocalDate.now().minusDays(1)) ||
+                                productDate.isEqual(LocalDate.now().minusDays(1))
+
                     ReportPeriod.WEEKLY ->
                         productDate.isAfter(LocalDate.now().minusWeeks(1)) ||
                                 productDate.isEqual(LocalDate.now().minusWeeks(1))
@@ -134,172 +139,208 @@ fun ReportsComponent(
         filterProductsByPeriod(products)
     }
 
-    Column {
-        // Period Selection and Export Row
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+    ) { innerpadding ->
+        LazyColumn(
+            modifier = Modifier.padding(horizontal = 20.dp).fillMaxSize(),
+            contentPadding = innerpadding,
+            state = lazyListState,
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
-            // Period Dropdown
-            ExposedDropdownMenuBox(
-                expanded = expandDropDown,
-                onExpandedChange = {
-                    expandDropDown = !expandDropDown
-                }
-            ) {
-                OutlinedTextField(
-                    value = selectedPeriod.name.replaceFirstChar { it.titlecase() },
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("Report Period") },
-                    trailingIcon = {
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandDropDown)
-                    },
-                    modifier = Modifier.menuAnchor()
-                )
-
-                ExposedDropdownMenu(
-                    expanded = expandDropDown,
-                    onDismissRequest = { expandDropDown = false }
+            item {
+                // Period Selection and Export Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ReportPeriod.entries.forEach { period ->
-                        DropdownMenuItem(
-                            text = { Text(period.name.replaceFirstChar { it.titlecase() }) },
-                            onClick = {
-                                selectedPeriod = period
-                                expandDropDown = false
+                    // Period Dropdown
+                    ExposedDropdownMenuBox(
+                        expanded = expandDropDown,
+                        onExpandedChange = {
+                            expandDropDown = !expandDropDown
+                        }
+                    ) {
+                        OutlinedTextField(
+                            value = selectedPeriod.name.replaceFirstChar { it.titlecase() },
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Report Period") },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandDropDown)
+                            },
+                            modifier = Modifier.menuAnchor()
+                        )
 
-                                // Set default date ranges for predefined periods
-                                when (period) {
-                                    ReportPeriod.WEEKLY -> {
-                                        startDate = LocalDate.now().minusWeeks(1)
-                                        endDate = LocalDate.now()
-                                    }
+                        ExposedDropdownMenu(
+                            expanded = expandDropDown,
+                            onDismissRequest = { expandDropDown = false }
+                        ) {
+                            ReportPeriod.entries.forEach { period ->
+                                DropdownMenuItem(
+                                    text = { Text(period.name.replaceFirstChar { it.titlecase() }) },
+                                    onClick = {
+                                        selectedPeriod = period
+                                        expandDropDown = false
 
-                                    ReportPeriod.MONTHLY -> {
-                                        startDate = LocalDate.now().minusMonths(1)
-                                        endDate = LocalDate.now()
-                                    }
+                                        // Set default date ranges for predefined periods
+                                        when (period) {
+                                            ReportPeriod.DIALY -> {
+                                                startDate = LocalDate.now().minusDays(1)
+                                                endDate = LocalDate.now()
+                                            }
 
-                                    ReportPeriod.YEARLY -> {
-                                        startDate = LocalDate.now().minusYears(1)
-                                        endDate = LocalDate.now()
-                                    }
+                                            ReportPeriod.WEEKLY -> {
+                                                startDate = LocalDate.now().minusWeeks(1)
+                                                endDate = LocalDate.now()
+                                            }
 
-                                    ReportPeriod.CUSTOM -> {
-                                        isDateRangePickerVisible = true
+                                            ReportPeriod.MONTHLY -> {
+                                                startDate = LocalDate.now().minusMonths(1)
+                                                endDate = LocalDate.now()
+                                            }
+
+                                            ReportPeriod.YEARLY -> {
+                                                startDate = LocalDate.now().minusYears(1)
+                                                endDate = LocalDate.now()
+                                            }
+
+                                            ReportPeriod.CUSTOM -> {
+                                                isDateRangePickerVisible = true
+                                            }
+                                        }
                                     }
-                                }
+                                )
                             }
+                        }
+                    }
+
+                    // Export Button
+                    IconButton(
+                        onClick = {
+                            isExportDialogVisible = true
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Download,
+                            contentDescription = "Export Report"
                         )
                     }
                 }
             }
 
-            // Export Button
-            IconButton(
-                onClick = {
-                    isExportDialogVisible = true
+            item {
+                // Date Range Picker for Custom Period
+                if (selectedPeriod == ReportPeriod.CUSTOM && isDateRangePickerVisible) {
+                    DateRangePicker(
+                        onDateRangeSelected = { start, end ->
+                            startDate = start
+                            endDate = end
+                            isDateRangePickerVisible = false
+                        },
+                        initialStartDate = startDate,
+                        initialEndDate = endDate
+                    )
                 }
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Download,
-                    contentDescription = "Export Report"
-                )
             }
-        }
 
-        // Date Range Picker for Custom Period
-        if (selectedPeriod == ReportPeriod.CUSTOM && isDateRangePickerVisible) {
-            DateRangePicker(
-                onDateRangeSelected = { start, end ->
-                    startDate = start
-                    endDate = end
-                    isDateRangePickerVisible = false
-                },
-                initialStartDate = startDate,
-                initialEndDate = endDate
-            )
-        }
-
-        // Export Preview (Always Visible)
-        if (exportPreviewData.isNotEmpty()) {
-            ElevatedCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
+            item {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text(
-                        text = "Export Preview (${selectedPeriod.name} Report)",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-
-                    Text(
-                        text = "Total Sales: ${exportPreviewData.size}",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-
-                    Text(
-                        text = "Total Value: ${
-                            exportPreviewData.sumOf {
-                                it.price.toDoubleOrNull() ?: 0.0
-                            }.let { "UGX ${"%,d".format(it.toLong())}" }
-                        }",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-
-                    LazyColumn(
-                        modifier = Modifier.heightIn(max = 200.dp)
+                    Column(
+                        modifier = Modifier.padding(16.dp)
                     ) {
-                        items(exportPreviewData) { product ->
+                        Text(
+                            text = "Export Preview (${selectedPeriod.name} Report)",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        Text(
+                            text = "Total Sales: ${exportPreviewData.size}",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = "Total Value: ${
+                                exportPreviewData.sumOf {
+                                    it.price.toDoubleOrNull() ?: 0.0
+                                }.let { "UGX ${"%,d".format(it.toLong())}" }
+                            }",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            // Export Preview (Always Visible)
+            if (exportPreviewData.isNotEmpty()) {
+                items(exportPreviewData) { product ->
+                    ElevatedCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp)
+                        ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(
-                                    text = product.productName,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                Text(
-                                    text = product.qty,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                                Text(
-                                    text = product.formattedPrice(),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-
-                        if (exportPreviewData.size > 5) {
-                            item {
-                                Text(
-                                    text = "... and ${exportPreviewData.size - 5} more",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(top = 8.dp)
-                                )
+                                Column(
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = product.productName,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Column(
+                                    modifier = Modifier.weight(0.3f)
+                                ) {
+                                    Text(
+                                        text = product.qty,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
+                                Column(
+                                    modifier = Modifier.weight(0.5f)
+                                ) {
+                                    Text(
+                                        text = product.formattedPrice(),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
                             }
                         }
                     }
                 }
+
+                if (exportPreviewData.size > 5) {
+                    item {
+                        Text(
+                            text = "... and ${exportPreviewData.size - 5} more",
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            } else {
+                // Show a message when no products are available
+                item {
+                    Text(
+                        text = "No products available for ${selectedPeriod.name} report",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                    )
+                }
             }
-        } else {
-            // Show a message when no products are available
-            Text(
-                text = "No products available for ${selectedPeriod.name} report",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            )
         }
 
         // Export Dialog
@@ -492,17 +533,6 @@ fun DateRangePicker(
 // Utility function to format LocalDate
 fun formatLocalDate(date: LocalDate): String {
     return date.format(DateTimeFormatter.ISO_LOCAL_DATE)
-}
-
-// Companion function to update date from DatePicker state
-@OptIn(ExperimentalMaterial3Api::class)
-fun updateDateFromPickerState(
-    state: DatePickerState,
-    currentDate: LocalDate
-): LocalDate {
-    return state.selectedDateMillis?.let { millis ->
-        LocalDate.ofEpochDay(millis / 86400000)
-    } ?: currentDate
 }
 
 // Improved CSV Export
@@ -737,6 +767,7 @@ fun exportReport(
         try {
             val productDate = parseProductDate(product.time)
             when (period) {
+                ReportPeriod.DIALY -> productDate.isEqual(currentDate.minusDays(1))
                 ReportPeriod.WEEKLY -> productDate.isAfter(currentDate.minusWeeks(1))
                 ReportPeriod.MONTHLY -> productDate.isAfter(currentDate.minusMonths(1))
                 ReportPeriod.YEARLY -> productDate.isAfter(currentDate.minusYears(1))

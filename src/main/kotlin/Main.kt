@@ -1,8 +1,5 @@
-import androidx.compose.foundation.background
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -11,6 +8,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.isTraySupported
 import androidx.compose.ui.window.rememberWindowState
+import presentation.MerchantCenterTheme
 import viewmodel.MainViewModel
 
 fun main() = application {
@@ -40,12 +38,12 @@ fun main() = application {
         title = "Merchant Center",
         icon = icon
     ) {
-        MaterialTheme {
-            Surface(modifier = Modifier.background(MaterialTheme.colorScheme.background)) {
-                MerchantCenterApp(
-                    mainViewModel = mainViewModel,
-                )
-            }
+        MerchantCenterTheme(
+            darkTheme = isSystemInDarkTheme()
+        ) {
+            MerchantCenterApp(
+                mainViewModel = mainViewModel,
+            )
         }
     }
 }

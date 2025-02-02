@@ -74,8 +74,8 @@ class MainViewModel {
         try {
             val currentDate = LocalDate.now().toString()
             val products = queries.selectAll().executeAsList().filter { product ->
-                    product.time.startsWith(currentDate)
-                }.map { it.toSalesProduct() }
+                product.time.startsWith(currentDate)
+            }.map { it.toSalesProduct() }
             _productsList.value = products
         } catch (e: Exception) {
             println("Error loading products: ${e.message}")
@@ -91,8 +91,8 @@ class MainViewModel {
         try {
             val currentDate = LocalDate.now().toString()
             val products = queries.selectAll().executeAsList().filter { product ->
-                    product.time.startsWith(currentDate)
-                }
+                product.time.startsWith(currentDate)
+            }
             return products.sumOf { product ->
                 product.price.toDoubleOrNull() ?: 0.0
             }
@@ -115,14 +115,14 @@ class MainViewModel {
     }
 
     suspend fun addProduct(
-        productName: String, qty: Int, price: Double
+        productName: String, qty: String, price: Double
     ) {
         try {
             mutex.withLock {
                 val newProduct = SalesProducts(
                     pid = generateUniqueId(),
                     productName = productName,
-                    qty = qty.toString(),
+                    qty = qty,
                     time = getCurrentTimestamp(),
                     price = price.toString()
                 )
@@ -210,14 +210,13 @@ class MainViewModel {
     }
 }
 
-
 data class SalesProducts(
     val pid: Int, val productName: String, val qty: String, val time: String, val price: String
 ) {
     // Comprehensive validation with UGX-specific constraints
     fun isValid(): Boolean =
-        productName.isNotBlank() && productName.length <= 100 && qty.toIntOrNull()
-            ?.let { it >= 0 } ?: false && price.toDoubleOrNull()?.let { it >= 0.0 } ?: false
+        productName.isNotBlank() && productName.length <= 100 && price.toDoubleOrNull()
+            ?.let { it >= 0.0 } ?: false
 
     // Formatted price in UGX with locale-specific formatting
     fun formattedPrice(): String {

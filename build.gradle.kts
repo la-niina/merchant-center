@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "pherus.merchant.center"
-version = "1.2-SNAPSHOT"
+version = "1.3-SNAPSHOT"
 
 repositories {
     mavenCentral()
@@ -88,20 +88,15 @@ compose.desktop {
         )
         nativeDistributions {
             targetFormats(
-                TargetFormat.Msi, TargetFormat.Deb
+                TargetFormat.Msi//, TargetFormat.Deb
             )
             includeAllModules = true
             packageName = "Merchant Center"
-            packageVersion = "1.1.2"
+            packageVersion = "1.1.3"
             copyright = "© 2025 Pherus all rights reserved"
             description =
                 "Merchant Center is a shop management system for data entries with sale, stocks and export "
             vendor = "Pherus"
-
-            windows {
-                installationPath = "C:\\Program Files\\Merchant Center"
-                iconFile.set(File("src/main/resources/merchant.ico"))
-            }
 
             linux {
                 installationPath = "/usr/share/merchant-center"
@@ -112,22 +107,46 @@ compose.desktop {
             windows {
                 menu = true
                 shortcut = true
+                installationPath = "C:\\Program Files\\Merchant Center"
                 iconFile.set(project.file("src/main/resources/merchant.ico"))
             }
 
             modules("java.base", "java.desktop")
             modules("java.instrument", "java.sql", "jdk.unsupported")
             buildTypes.release.proguard {
+                configurationFiles.from("proguard-rules.pro")
+                obfuscate.set(true)
                 isEnabled.set(false)
+            }
+        }
+
+        sourceSets {
+            main {
+                resources {
+                    exclude("**/unused/**")
+                }
             }
         }
     }
 }
 
+compose.resources {
+    publicResClass = true
+    generateResClass = always
+}
+
 tasks.withType<KotlinCompile> {
     kotlinOptions {
         jvmTarget = "21"
+        freeCompilerArgs =
+            listOf("-Xno-call-assertions", "-Xno-param-assertions", "-Xno-receiver-assertions")
     }
+}
+
+tasks.withType<Jar> {
+    exclude("**/*.md")
+    exclude("**/*.txt")
+    exclude("**/*.xml")
 }
 
 tasks.register("jpackage") {

@@ -1,6 +1,5 @@
 package components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -25,7 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -58,6 +58,7 @@ fun SalesComponent(
 ) {
     var searchInput by rememberSaveable { mutableStateOf("") }
     var showAddSaleDialog by rememberSaveable { mutableStateOf(false) }
+    val lazyListState = rememberLazyListState()
 
     val productsSales by mainViewModel.productsList.collectAsState()
     val coroutineScope = rememberCoroutineScope()
@@ -77,29 +78,60 @@ fun SalesComponent(
         mainViewModel.loadCurrentDateTime()
     }
 
-    Surface(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        Column {
-            // Header and Search Section
-            SalesSectionHeader(
-                searchInput = searchInput,
-                onSearchChange = { searchInput = it },
-                onAddSaleClick = { showAddSaleDialog = true }
-            )
+    Scaffold(
+        modifier = Modifier.fillMaxSize()
+    ) { innerpadding ->
+        LazyColumn(
+            modifier = Modifier.padding(horizontal = 20.dp).fillMaxSize(),
+            state = lazyListState,
+            contentPadding = innerpadding,
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            item {
+                SalesSectionHeader(
+                    searchInput = searchInput,
+                    onSearchChange = { searchInput = it },
+                    onAddSaleClick = { showAddSaleDialog = true }
+                )
+            }
 
-            // Sales List
-            SalesProductList(
-                products = filteredProducts,
-                mainViewModel = mainViewModel,
-                onRemoveProduct = { product ->
-                    coroutineScope.launch {
-                        mainViewModel.removeProductById(product.pid)
+            // Table Header
+            item { SalesListHeader() }
+
+            // Product Items
+            items(filteredProducts) { product ->
+                SalesListing(
+                    productName = product.productName.ifBlank { "Unknown Product" },
+                    qty = product.qty,
+                    time = product.formattedTime(),
+                    price = product.formattedPrice(),
+                    onRemove = {
+                        coroutineScope.launch {
+                            mainViewModel.removeProductById(product.pid)
+                        }
                     }
-                }
-            )
+                )
+            }
+
+            // Total Sales
+            item {
+                SalesTotal(
+                    total = mainViewModel.getFormattedTotalPriceOfProducts()
+                )
+            }
+
+//            item {
+//                SalesProductList(
+//                    products = filteredProducts,
+//                    mainViewModel = mainViewModel,
+//                    onRemoveProduct = { product ->
+//                        coroutineScope.launch {
+//                            mainViewModel.removeProductById(product.pid)
+//                        }
+//                    }
+//                )
+//            }
         }
 
         // Add Sale Dialog
@@ -110,9 +142,10 @@ fun SalesComponent(
                     coroutineScope.launch {
                         mainViewModel.addProduct(
                             productName = name,
-                            qty = qty.toInt(),
+                            qty = qty,
                             price = price.toDouble()
                         )
+                        mainViewModel.refreshProducts()
                         showAddSaleDialog = false
                     }
                 }
@@ -167,7 +200,7 @@ fun SalesProductList(
         items(products) { product ->
             SalesListing(
                 productName = product.productName.ifBlank { "Unknown Product" },
-                qty = product.qty.takeIf { it.toIntOrNull() != null } ?: "0",
+                qty = product.qty,
                 time = product.formattedTime(),
                 price = product.formattedPrice(),
                 onRemove = { onRemoveProduct(product) }

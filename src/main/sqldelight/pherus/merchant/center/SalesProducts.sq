@@ -1,7 +1,7 @@
 CREATE TABLE SalesProducts (
   pid INTEGER PRIMARY KEY NOT NULL UNIQUE,
   productName TEXT NOT NULL CHECK(length(productName) > 0),
-  qty TEXT NOT NULL CHECK(CAST(qty AS INTEGER) >= 0),
+  qty TEXT NOT NULL,
   time TEXT NOT NULL,
   price TEXT NOT NULL CHECK(CAST(price AS REAL) >= 0)
 );
