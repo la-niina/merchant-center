@@ -1,13 +1,15 @@
 package viewmodel
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -21,34 +23,72 @@ import java.util.Locale
 
 class MainViewModel {
     private val driver = JdbcSqliteDriver(
-        url = "jdbc:sqlite:sales_products.db", // Persistent database file
+        url = "jdbc:sqlite:sales_products.db?journal_mode=WAL&synchronous=NORMAL&cache_size=10000",
         schema = Database.Schema
     )
+
     private val database = Database(driver)
     private val queries = database.salesProductsQueries
+    val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    // Use StateFlow for better performance with collections
     private val _productsList = MutableStateFlow<List<SalesProducts>>(emptyList())
-    val productsList: StateFlow<List<SalesProducts>> = _productsList.asStateFlow()
+    val productsList = _productsList.asStateFlow()
 
     private val _allproductsList = MutableStateFlow<List<SalesProducts>>(emptyList())
-    val allproductsList: StateFlow<List<SalesProducts>> = _allproductsList.asStateFlow()
+    val allproductsList = _allproductsList.asStateFlow()
 
     private val _currentDateTime = MutableStateFlow(getCurrentFormattedDateTime())
-    val currentDateTime: StateFlow<String> = _currentDateTime.asStateFlow()
+    val currentDateTime = _currentDateTime.asStateFlow()
 
-    // Mutex for thread-safe operations
     private val mutex = Mutex()
-
-    // Secure random generator for unique ID
     private val secureRandom = SecureRandom()
 
     init {
-        loadProducts()
-        loadAllProducts()
+        scope.launch {
+            loadInitialData()
+            startTimeUpdates()
+        }
     }
 
-    suspend fun loadCurrentDateTime() {
+    private suspend fun loadInitialData() {
         withContext(Dispatchers.IO) {
+            launch { loadProducts() }
+            launch { loadAllProducts() }
+        }
+    }
+
+    private suspend fun startTimeUpdates() {
+        withContext(Dispatchers.IO) {
+            while (true) {
+                _currentDateTime.value = getCurrentFormattedDateTime()
+                delay(1000)
+            }
+        }
+    }
+
+    fun loadProducts() {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val currentDate = LocalDate.now().toString()
+                val products = withContext(Dispatchers.IO) {
+                    queries.selectAll()
+                        .executeAsList()
+                        .asSequence()
+                        .filter { it.time.startsWith(currentDate) }
+                        .map { it.toSalesProduct() }
+                        .toList()
+                }
+                _productsList.value = products
+            } catch (e: Exception) {
+                println("Error loading products: ${e.message}")
+                _productsList.value = emptyList()
+            }
+        }
+    }
+
+    fun loadCurrentDateTime() {
+        scope.launch(Dispatchers.IO) {
             flow {
                 while (true) {
                     emit(getCurrentFormattedDateTime())
@@ -61,25 +101,14 @@ class MainViewModel {
     }
 
     fun loadAllProducts() {
-        try {
-            val products = queries.selectAll().executeAsList().map { it.toSalesProduct() }
-            _allproductsList.value = products
-        } catch (e: Exception) {
-            println("Error loading products: ${e.message}")
-            _allproductsList.value = emptyList()
-        }
-    }
-
-    fun loadProducts() {
-        try {
-            val currentDate = LocalDate.now().toString()
-            val products = queries.selectAll().executeAsList().filter { product ->
-                product.time.startsWith(currentDate)
-            }.map { it.toSalesProduct() }
-            _productsList.value = products
-        } catch (e: Exception) {
-            println("Error loading products: ${e.message}")
-            _productsList.value = emptyList()
+        scope.launch(Dispatchers.IO) {
+            try {
+                val products = queries.selectAll().executeAsList().map { it.toSalesProduct() }
+                _allproductsList.value = products
+            } catch (e: Exception) {
+                println("Error loading products: ${e.message}")
+                _allproductsList.value = emptyList()
+            }
         }
     }
 
@@ -114,61 +143,67 @@ class MainViewModel {
         }
     }
 
-    suspend fun addProduct(
+    fun addProduct(
         productName: String, qty: String, price: Double
     ) {
-        try {
-            mutex.withLock {
-                val newProduct = SalesProducts(
-                    pid = generateUniqueId(),
-                    productName = productName,
-                    qty = qty,
-                    time = getCurrentTimestamp(),
-                    price = price.toString()
-                )
-
-                if (newProduct.isValid()) {
-                    queries.insertProduct(
-                        pid = newProduct.pid,
-                        productName = newProduct.productName,
-                        qty = newProduct.qty,
-                        time = newProduct.time,
-                        price = newProduct.price
+        scope.launch(Dispatchers.IO) {
+            try {
+                mutex.withLock {
+                    val newProduct = SalesProducts(
+                        pid = generateUniqueId(),
+                        productName = productName,
+                        qty = qty,
+                        time = getCurrentTimestamp(),
+                        price = price.toString()
                     )
 
-                    _productsList.update { currentList ->
-                        currentList + newProduct
+                    if (newProduct.isValid()) {
+                        queries.insertProduct(
+                            pid = newProduct.pid,
+                            productName = newProduct.productName,
+                            qty = newProduct.qty,
+                            time = newProduct.time,
+                            price = newProduct.price
+                        )
+
+                        _productsList.update { currentList ->
+                            currentList + newProduct
+                        }
+                    } else {
+                        throw IllegalArgumentException("Invalid product data")
                     }
-                } else {
-                    throw IllegalArgumentException("Invalid product data")
                 }
+            } catch (e: Exception) {
+                println("Error adding product: ${e.message}")
             }
-        } catch (e: Exception) {
-            println("Error adding product: ${e.message}")
         }
     }
 
-    suspend fun removeProductById(pid: Int) {
-        try {
-            mutex.withLock {
-                queries.deleteById(pid)
-                _productsList.update { currentList ->
-                    currentList.filter { it.pid != pid }
+    fun removeProductById(pid: Int) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                mutex.withLock {
+                    queries.deleteById(pid)
+                    _productsList.update { currentList ->
+                        currentList.filter { it.pid != pid }
+                    }
                 }
+            } catch (e: Exception) {
+                println("Error removing product: ${e.message}")
             }
-        } catch (e: Exception) {
-            println("Error removing product: ${e.message}")
         }
     }
 
-    suspend fun clearProducts() {
-        try {
-            mutex.withLock {
-                queries.deleteAll()
-                _productsList.value = emptyList()
+    fun clearProducts() {
+        scope.launch(Dispatchers.IO) {
+            try {
+                mutex.withLock {
+                    queries.deleteAll()
+                    _productsList.value = emptyList()
+                }
+            } catch (e: Exception) {
+                println("Error clearing products: ${e.message}")
             }
-        } catch (e: Exception) {
-            println("Error clearing products: ${e.message}")
         }
     }
 

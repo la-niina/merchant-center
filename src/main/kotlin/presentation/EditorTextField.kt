@@ -1,7 +1,6 @@
 package presentation
 
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Remove
@@ -23,11 +22,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 @Composable
-fun SearchTextField(
+fun EditorTextField(
+    modifier: Modifier = Modifier,
     value: String,
     onValueChange: (String) -> Unit
 ) {
     ElevatedCard(
+        modifier = modifier,
         shape = RoundedCornerShape(20),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.secondary
@@ -38,7 +39,7 @@ fun SearchTextField(
             onValueChange = onValueChange,
             placeholder = {
                 Text(
-                    "Search item by name",
+                    "File Name",
                     fontSize = 12.sp,
                     lineHeight = 12.sp,
                     fontWeight = FontWeight.Normal,
@@ -76,8 +77,7 @@ fun SearchTextField(
                 disabledBorderColor = Color.Transparent,
                 cursorColor = MaterialTheme.colorScheme.onSecondary
             ),
-            modifier = Modifier
-                .width(450.dp)
+            modifier = modifier
                 .height(48.dp)
         )
     }

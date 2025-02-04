@@ -1,7 +1,6 @@
 package components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,7 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -43,13 +41,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.PDPage
@@ -60,6 +58,7 @@ import org.apache.poi.ss.usermodel.FillPatternType
 import org.apache.poi.ss.usermodel.HorizontalAlignment
 import org.apache.poi.ss.usermodel.IndexedColors
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
+import presentation.EditorTextField
 import viewmodel.MainViewModel
 import viewmodel.SalesProducts
 import java.awt.SystemTray
@@ -92,12 +91,6 @@ fun ReportsComponent(
     var expandDropDown by remember { mutableStateOf(false) }
     var isDateRangePickerVisible by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        mainViewModel.loadCurrentDateTime()
-        mainViewModel.loadProducts()
-        mainViewModel.loadAllProducts()
-    }
-
     val lazyListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val products by mainViewModel.allproductsList.collectAsState()
@@ -125,8 +118,8 @@ fun ReportsComponent(
                                 productDate.isEqual(LocalDate.now().minusYears(1))
 
                     ReportPeriod.CUSTOM ->
-                        (productDate.isAfter(startDate.minusDays(1)) &&
-                                productDate.isBefore(endDate.plusDays(1)))
+                        (productDate.isAfter(startDate) &&
+                                productDate.isBefore(endDate))
                 }
             } catch (e: Exception) {
                 false
@@ -137,6 +130,12 @@ fun ReportsComponent(
     // Always calculate preview data
     val exportPreviewData = remember(products, selectedPeriod) {
         filterProductsByPeriod(products)
+    }
+
+    LaunchedEffect(Unit) {
+        mainViewModel.loadCurrentDateTime()
+        mainViewModel.loadProducts()
+        mainViewModel.loadAllProducts()
     }
 
     Scaffold(
@@ -187,7 +186,7 @@ fun ReportsComponent(
                                         // Set default date ranges for predefined periods
                                         when (period) {
                                             ReportPeriod.DIALY -> {
-                                                startDate = LocalDate.now().minusDays(1)
+                                                startDate = LocalDate.now()
                                                 endDate = LocalDate.now()
                                             }
 
@@ -350,10 +349,10 @@ fun ReportsComponent(
                 onDismiss = {
                     isExportDialogVisible = false
                 },
-                onExport = { format ->
+                onExport = { format, fileName ->
                     coroutineScope.launch {
                         exportReport(
-                            viewModel = mainViewModel,
+                            fileName = fileName,
                             period = selectedPeriod,
                             format = format,
                             startDate = startDate,
@@ -688,8 +687,9 @@ fun exportToExcel(products: List<SalesProducts>, file: File) {
 fun ExportReportDialog(
     previewData: List<SalesProducts>,
     onDismiss: () -> Unit,
-    onExport: (ExportFormat) -> Unit
+    onExport: (ExportFormat, String) -> Unit
 ) {
+    var fileName by rememberSaveable { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Export Report") },
@@ -707,12 +707,22 @@ fun ExportReportDialog(
                     }",
                     style = MaterialTheme.typography.bodyMedium
                 )
-
+                EditorTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = fileName,
+                    onValueChange = {
+                        fileName = it
+                    }
+                )
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
                 ExportFormat.entries.forEach { format ->
                     Button(
-                        onClick = { onExport(format) },
+                        onClick = {
+                            if (fileName.isNotBlank()) {
+                                onExport(format, fileName)
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text("Export as ${format.name}")
@@ -753,7 +763,7 @@ fun parseProductDate(timeString: String): LocalDate {
 
 // Modify the export report function
 fun exportReport(
-    viewModel: MainViewModel,
+    fileName: String,
     period: ReportPeriod,
     format: ExportFormat,
     startDate: LocalDate = LocalDate.now().minusWeeks(1),
@@ -767,7 +777,7 @@ fun exportReport(
         try {
             val productDate = parseProductDate(product.time)
             when (period) {
-                ReportPeriod.DIALY -> productDate.isEqual(currentDate.minusDays(1))
+                ReportPeriod.DIALY -> productDate.isEqual(currentDate)
                 ReportPeriod.WEEKLY -> productDate.isAfter(currentDate.minusWeeks(1))
                 ReportPeriod.MONTHLY -> productDate.isAfter(currentDate.minusMonths(1))
                 ReportPeriod.YEARLY -> productDate.isAfter(currentDate.minusYears(1))
@@ -781,7 +791,11 @@ fun exportReport(
 
     // Generate filename with date and period
     val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-    val filename = "Sales_Report_${period.name}_${currentDate.format(formatter)}"
+    val filename = if (fileName.isNotEmpty()) {
+        "Sales_Report_${period.name}_${currentDate.format(formatter)}"
+    } else {
+        "${fileName}_${currentDate.format(formatter)}"
+    }
 
     // Determine export directory (cross-platform)
     val exportDir = getExportDirectory()
@@ -879,7 +893,8 @@ fun exportToPdf(products: List<SalesProducts>, file: File) {
             products.forEach { product ->
                 // Calculate total price for this product
                 val unitPrice = product.price.replace(",", "").toDoubleOrNull() ?: 0.0
-                val perItem = unitPrice / (product.qty.toIntOrNull() ?: 0)
+                val perItem =
+                    unitPrice / (product.qty.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0)
 
                 contentStream.beginText()
                 contentStream.setFont(PDType1Font.HELVETICA, 10f)
@@ -1053,46 +1068,6 @@ fun openFileLocation(file: File) {
 
         else -> {
             println("Unsupported OS for opening file location")
-        }
-    }
-}
-
-// Compose Desktop specific toast notification (optional)
-@Composable
-fun ToastNotification(
-    message: String,
-    type: NotificationType = NotificationType.SUCCESS,
-    duration: Long = 3000
-) {
-    var visible by remember { mutableStateOf(true) }
-
-    LaunchedEffect(message) {
-        delay(duration)
-        visible = false
-    }
-
-    if (visible) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            Surface(
-                color = when (type) {
-                    NotificationType.SUCCESS -> Color.Green
-                    NotificationType.ERROR -> Color.Red
-                    NotificationType.WARNING -> Color.Yellow
-                }.copy(alpha = 0.8f),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    text = message,
-                    color = Color.White,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
         }
     }
 }

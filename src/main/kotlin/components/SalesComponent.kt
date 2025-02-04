@@ -17,8 +17,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.MonetizationOn
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
@@ -50,27 +52,30 @@ import presentation.SalesListing
 import presentation.SalesTotal
 import presentation.SearchTextField
 import viewmodel.MainViewModel
-import viewmodel.SalesProducts
 
 @Composable
 fun SalesComponent(
     mainViewModel: MainViewModel = MainViewModel(),
 ) {
-    var searchInput by rememberSaveable { mutableStateOf("") }
-    var showAddSaleDialog by rememberSaveable { mutableStateOf(false) }
-    val lazyListState = rememberLazyListState()
-
     val productsSales by mainViewModel.productsList.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
-    // Derive filtered products
+    // Cache searchInput transformation
+    var searchInput by remember { mutableStateOf("") }
     val filteredProducts by remember(productsSales, searchInput) {
         derivedStateOf {
-            productsSales.filter {
-                it.productName.contains(searchInput, ignoreCase = true)
+            if (searchInput.isBlank()) {
+                productsSales.sortedByDescending { it.time }
+            } else {
+                productsSales.filter {
+                    it.productName.contains(searchInput, ignoreCase = true)
+                }.sortedByDescending { it.time }
             }
         }
     }
+
+    var showAddSaleDialog by remember { mutableStateOf(false) }
+    val lazyListState = rememberLazyListState()
 
     // Initial data loading
     LaunchedEffect(Unit) {
@@ -88,19 +93,25 @@ fun SalesComponent(
             verticalArrangement = Arrangement.spacedBy(5.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            item {
+            item(key = "header") {
                 SalesSectionHeader(
                     searchInput = searchInput,
                     onSearchChange = { searchInput = it },
+                    onRefreshClick = { mainViewModel.refreshProducts() },
                     onAddSaleClick = { showAddSaleDialog = true }
                 )
             }
 
             // Table Header
-            item { SalesListHeader() }
+            item(key = "list-header") {
+                SalesListHeader()
+            }
 
             // Product Items
-            items(filteredProducts) { product ->
+            items(
+                items = filteredProducts,
+                key = { it.pid } // Stable keys for better list performance
+            ) { product ->
                 SalesListing(
                     productName = product.productName.ifBlank { "Unknown Product" },
                     qty = product.qty,
@@ -115,23 +126,11 @@ fun SalesComponent(
             }
 
             // Total Sales
-            item {
+            item(key = "total") {
                 SalesTotal(
                     total = mainViewModel.getFormattedTotalPriceOfProducts()
                 )
             }
-
-//            item {
-//                SalesProductList(
-//                    products = filteredProducts,
-//                    mainViewModel = mainViewModel,
-//                    onRemoveProduct = { product ->
-//                        coroutineScope.launch {
-//                            mainViewModel.removeProductById(product.pid)
-//                        }
-//                    }
-//                )
-//            }
         }
 
         // Add Sale Dialog
@@ -139,13 +138,8 @@ fun SalesComponent(
             AddSaleDialog(
                 onDismissRequest = { showAddSaleDialog = false },
                 onAddSale = { name, qty, price ->
-                    coroutineScope.launch {
-                        mainViewModel.addProduct(
-                            productName = name,
-                            qty = qty,
-                            price = price.toDouble()
-                        )
-                        mainViewModel.refreshProducts()
+                    mainViewModel.scope.launch {
+                        mainViewModel.addProduct(name, qty, price.toDouble())
                         showAddSaleDialog = false
                     }
                 }
@@ -158,6 +152,7 @@ fun SalesComponent(
 fun SalesSectionHeader(
     searchInput: String,
     onSearchChange: (String) -> Unit,
+    onRefreshClick: () -> Unit,
     onAddSaleClick: () -> Unit,
 ) {
     Row(
@@ -172,46 +167,38 @@ fun SalesSectionHeader(
             onValueChange = onSearchChange
         )
 
-        Button(
-            onClick = onAddSaleClick,
-            shape = RoundedCornerShape(5)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text("Add Sale")
-        }
-    }
-}
-
-@Composable
-fun SalesProductList(
-    products: List<SalesProducts>,
-    mainViewModel: MainViewModel,
-    onRemoveProduct: (SalesProducts) -> Unit
-) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp)
-    ) {
-        // Table Header
-        item { SalesListHeader() }
-
-        // Product Items
-        items(products) { product ->
-            SalesListing(
-                productName = product.productName.ifBlank { "Unknown Product" },
-                qty = product.qty,
-                time = product.formattedTime(),
-                price = product.formattedPrice(),
-                onRemove = { onRemoveProduct(product) }
-            )
-        }
-
-        // Total Sales
-        item {
-            SalesTotal(
-                total = mainViewModel.getFormattedTotalPriceOfProducts()
-            )
+            Button(
+                onClick = onAddSaleClick,
+                shape = RoundedCornerShape(10)
+            ) {
+                Icon(
+                    Icons.Rounded.Add,
+                    contentDescription = null
+                )
+                Spacer(modifier = Modifier.padding(5.dp))
+                Text(
+                    text = "Add Sale",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            Button(
+                onClick = onRefreshClick,
+                shape = RoundedCornerShape(10)
+            ) {
+                Icon(
+                    Icons.Rounded.Refresh,
+                    contentDescription = null
+                )
+                Spacer(modifier = Modifier.padding(5.dp))
+                Text(
+                    text = "Refresh",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
         }
     }
 }
