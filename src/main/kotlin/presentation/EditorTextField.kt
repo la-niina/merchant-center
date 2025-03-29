@@ -2,6 +2,7 @@ package presentation
 
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Search
@@ -13,11 +14,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -25,6 +30,8 @@ import androidx.compose.ui.unit.sp
 fun EditorTextField(
     modifier: Modifier = Modifier,
     value: String,
+    placeHolder: String,
+    default: Boolean = true,
     onValueChange: (String) -> Unit
 ) {
     ElevatedCard(
@@ -39,11 +46,8 @@ fun EditorTextField(
             onValueChange = onValueChange,
             placeholder = {
                 Text(
-                    "File Name",
-                    fontSize = 12.sp,
-                    lineHeight = 12.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = MaterialTheme.colorScheme.onSecondary
+                    placeHolder,
+                    style = smallTextStyle()
                 )
             },
             leadingIcon = {
@@ -53,25 +57,31 @@ fun EditorTextField(
                     tint = MaterialTheme.colorScheme.onSecondary
                 )
             },
-            textStyle = TextStyle(
-                fontSize = 12.sp,
-                lineHeight = 12.sp,
-                fontWeight = FontWeight.Normal,
-                color = MaterialTheme.colorScheme.onSecondary
-            ),
+            textStyle = smallTextStyle(),
             trailingIcon = {
-                if (value.isNotBlank()) {
-                    IconButton(onClick = { onValueChange("") }) {
-                        Icon(
-                            Icons.Rounded.Remove,
-                            contentDescription = "Clear",
-                            tint = MaterialTheme.colorScheme.onSecondary
-                        )
+                if (default) {
+                    if (value.isNotBlank()) {
+                        IconButton(onClick = { onValueChange("") }) {
+                            Icon(
+                                Icons.Rounded.Remove,
+                                contentDescription = "Clear",
+                                tint = MaterialTheme.colorScheme.onSecondary
+                            )
+                        }
                     }
                 }
             },
             singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Text,
+                imeAction = ImeAction.Done
+            ),
             colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = MaterialTheme.colorScheme.onSecondary,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSecondary,
+                disabledTextColor = MaterialTheme.colorScheme.onSecondary,
+                errorTextColor = MaterialTheme.colorScheme.error,
+                errorSupportingTextColor = MaterialTheme.colorScheme.error,
                 focusedBorderColor = Color.Transparent,
                 unfocusedBorderColor = Color.Transparent,
                 disabledBorderColor = Color.Transparent,
@@ -82,3 +92,12 @@ fun EditorTextField(
         )
     }
 }
+
+
+@Composable
+fun smallTextStyle() = TextStyle(
+    fontSize = 11.sp,
+    lineHeight = 11.sp,
+    fontWeight = MaterialTheme.typography.labelSmall.fontWeight,
+    color = MaterialTheme.colorScheme.onSecondary,
+)

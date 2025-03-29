@@ -24,10 +24,12 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun SearchTextField(
+    modifier: Modifier = Modifier,
     value: String,
     onValueChange: (String) -> Unit
 ) {
     ElevatedCard(
+        modifier = modifier,
         shape = RoundedCornerShape(20),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.secondary

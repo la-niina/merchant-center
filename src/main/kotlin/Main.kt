@@ -12,7 +12,7 @@ import presentation.MerchantCenterTheme
 import viewmodel.MainViewModel
 
 fun main() = application {
-    val windowState = rememberWindowState(size = DpSize(1440.dp, 768.dp))
+    val windowState = rememberWindowState(size = DpSize(1640.dp, 868.dp))
     val mainViewModel = remember { MainViewModel() }
 
     Window(

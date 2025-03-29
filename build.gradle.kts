@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
@@ -11,7 +12,7 @@ plugins {
 }
 
 group = "pherus.merchant.center"
-version = "1.4-SNAPSHOT"
+version = "1.5-SNAPSHOT"
 
 repositories {
     mavenCentral()
@@ -88,35 +89,68 @@ compose.desktop {
         )
         nativeDistributions {
             targetFormats(
-                TargetFormat.Msi//, TargetFormat.Deb
+                TargetFormat.Msi, 
+                TargetFormat.Deb
             )
             includeAllModules = true
             packageName = "Merchant Center"
-            packageVersion = "1.1.4"
+            packageVersion = "1.1.6"
             copyright = "© 2025 Pherus all rights reserved"
             description =
                 "Merchant Center is a shop management system for data entries with sale, stocks and export "
             vendor = "Pherus"
-
-            linux {
-                installationPath = "/usr/share/merchant-center"
-                iconFile.set(File("src/main/resources/merchant.png")) // Change to merchant.png
-                debMaintainer = "pherus@pherus.org"
-            }
-
+            
+            // Enable automatic updates
+            appResourcesRootDir.set(project.layout.projectDirectory.dir("src/main/resources"))
+            
+            // Ensure previous version uninstallation
             windows {
                 menu = true
                 shortcut = true
                 installationPath = "C:\\Program Files\\Merchant Center"
                 iconFile.set(project.file("src/main/resources/merchant.ico"))
+                // Use consistent upgradeUuid to properly handle upgrades
+                upgradeUuid = "1b1a9c9a-475d-4591-8e2d-756f04374565"
+                msiPackageVersion = "1.1.6"
+                exePackageVersion = "1.1.6"
+                // Add uninstaller logic
+                dirChooser = true
+                perUserInstall = true
+                console = false
+                // Enable auto-update support
+                menuGroup = "Merchant Center"
             }
 
-            modules("java.base", "java.desktop")
-            modules("java.instrument", "java.sql", "jdk.unsupported")
-            buildTypes.release.proguard {
-                configurationFiles.from("proguard-rules.pro")
-                obfuscate.set(true)
-                isEnabled.set(false)
+            linux {
+                installationPath = "/opt/merchant-center"
+                iconFile.set(project.file("src/main/resources/merchant.png"))
+                debMaintainer = "pherus@pherus.org"
+                // Add package management info for better updates
+                packageName = "merchant-center"
+                appCategory = "Office;Finance"
+                rpmLicenseType = "Commercial"
+            }
+
+            macOS {
+                // Add macOS support
+                iconFile.set(project.file("src/main/resources/merchant.icns"))
+                bundleID = "org.pherus.merchantcenter"
+                appCategory = "public.app-category.business"
+                signing {
+                    sign.set(false) // Set to true when certificates are ready
+                }
+            }
+
+            // Required Java modules
+            modules("java.base", "java.desktop", "java.instrument", "java.sql", "jdk.unsupported")
+            
+            // Optimize build for release
+            buildTypes.release {
+                proguard {
+                    configurationFiles.from("proguard-rules.pro")
+                    obfuscate.set(true)
+                    isEnabled.set(false) // Enable for production releases
+                }
             }
         }
 
@@ -124,6 +158,8 @@ compose.desktop {
             main {
                 resources {
                     exclude("**/unused/**")
+                    // Include update-related resources
+                    include("**/updates/**")
                 }
             }
         }
@@ -136,10 +172,22 @@ compose.resources {
 }
 
 tasks.withType<KotlinCompile> {
-    kotlinOptions {
-        jvmTarget = "21"
-        freeCompilerArgs =
-            listOf("-Xno-call-assertions", "-Xno-param-assertions", "-Xno-receiver-assertions")
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_21)
+        freeCompilerArgs.set(
+            listOf(
+                "-Xno-call-assertions",
+                "-Xno-param-assertions",
+                "-Xno-receiver-assertions",
+                "-Xskip-metadata-version-check",
+                "-Xinline-classes",
+                "-opt-in=kotlin.ExperimentalStdlibApi",
+                "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+                "-opt-in=kotlinx.coroutines.FlowPreview",
+                "-opt-in=kotlin.Experimental",
+                "-opt-in=kotlinx.serialization.ExperimentalSerializationApi"
+            )
+        )
     }
 }
 

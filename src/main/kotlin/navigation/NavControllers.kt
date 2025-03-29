@@ -14,6 +14,7 @@ import components.HeaderComponent
 import components.ReportsComponent
 import components.SalesComponent
 import viewmodel.MainViewModel
+import java.time.LocalDate
 
 @Composable
 fun NavControllers(
@@ -32,7 +33,7 @@ fun NavControllers(
     LaunchedEffect(Unit, mainViewModel) {
         mainViewModel.loadProducts()
         mainViewModel.loadAllProducts()
-        mainViewModel.loadCurrentDateTime()
+        mainViewModel.loadProductsForDate(LocalDate.now().toString())
     }
 
     Surface {
@@ -42,6 +43,7 @@ fun NavControllers(
             HeaderComponent(
                 titleHeader = "Merchant center",
                 currentRoute = currentRoute,
+                mainViewModel = mainViewModel,
                 onNavigate = { currentRoute = it }
             )
             when (currentRoute) {

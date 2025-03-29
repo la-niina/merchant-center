@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChatHistoryState">
+    <option name="serializedSessions">
+      <map>
+        <entry key="dbcbc6f2-840f-48ac-b16a-c1cf7d077368" value="{&quot;id&quot;:&quot;dbcbc6f2-840f-48ac-b16a-c1cf7d077368&quot;,&quot;name&quot;:&quot;Resolving \u0027val\u0027 Reassignment Error in Kotlin&quot;,&quot;timestamp&quot;:1743284364358,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;\u003cadditional_data\u003e\n\u003cespecially_relevant_code_snippet\u003e\nsrc/main/kotlin/components/ReportsComponent.kt\n```kotlin:src/main/kotlin/components/ReportsComponent.kt\n                    \n                    newContentStream.setNonStrokingColor(0, 0, 0)\n                    yPosition -\u003d rowHeight\n                    contentStream \u003d newContentStream\n                    isAlternate \u003d false\n                }\n            }\n\n```\n\u003c/especially_relevant_code_snippet\u003e\n\u003c/additional_data\u003e\n\n\n\u003cuser_query\u003e\nFor the code present, we get this error:\n```\n\u0027val\u0027 cannot be reassigned.\n```\nHow can I resolve this? If you propose a fix, please make it concise.\n\u003c/user_query\u003e&quot;},{&quot;role&quot;:&quot;assistant&quot;,&quot;content&quot;:&quot;The request was cancelled. Here is my cutoff response:&quot;}]}" />
+      </map>
+    </option>
+  </component>
+</project>

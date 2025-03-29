@@ -1,24 +1,48 @@
 CREATE TABLE SalesProducts (
-  pid INTEGER PRIMARY KEY NOT NULL UNIQUE,
-  productName TEXT NOT NULL CHECK(length(productName) > 0),
+  pid INTEGER PRIMARY KEY NOT NULL,
+  productName TEXT NOT NULL CHECK(length(productName) > 0 AND length(productName) <= 100),
   qty TEXT NOT NULL,
   time TEXT NOT NULL,
   price TEXT NOT NULL CHECK(CAST(price AS REAL) >= 0)
 );
 
--- Insert statement
+-- Improved indices for faster queries
+CREATE INDEX idx_sales_products_time ON SalesProducts(time);
+CREATE INDEX idx_sales_products_name ON SalesProducts(productName);
+
+-- Optimized insert statement with parameter binding
 insertProduct:
 INSERT INTO SalesProducts (pid, productName, qty, time, price)
 VALUES (?, ?, ?, ?, ?);
 
--- Query all products
+-- Query all products with column selection
 selectAll:
-SELECT * FROM SalesProducts;
+SELECT pid, productName, qty, time, price FROM SalesProducts;
 
--- Delete by ID
+-- Query filtered by date prefix with index usage
+selectTodaysProducts:
+SELECT pid, productName, qty, time, price FROM SalesProducts 
+WHERE time LIKE ? 
+ORDER BY pid DESC;
+
+-- Optimized aggregation query
+selectSumOfAllPrices:
+SELECT SUM(CAST(price AS REAL)) FROM SalesProducts;
+
+-- Delete by ID with parameter binding
 deleteById:
 DELETE FROM SalesProducts WHERE pid = ?;
 
--- Delete All
+-- Optimized bulk delete
 deleteAll:
 DELETE FROM SalesProducts;
+
+-- Transaction wrapper for batch operations
+beginTransaction:
+BEGIN TRANSACTION;
+
+commitTransaction:
+COMMIT;
+
+rollbackTransaction:
+ROLLBACK;

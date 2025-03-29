@@ -31,18 +31,26 @@ import viewmodel.MainViewModel
 fun HeaderComponent(
     titleHeader: String = "MERCHANT CENTER",
     currentRoute: Route = Route.Sales,
-    mainViewModel: MainViewModel = MainViewModel(),
+    mainViewModel: MainViewModel,
     onNavigate: (Route) -> Unit,
 ) {
-    val currentTimeDate by mainViewModel.currentDateTime.collectAsState()
+    // Use collectAsState(initial) to prevent UI jank during collection
+    val currentTimeDate by mainViewModel.currentDateTime.collectAsState(
+        initial = "Loading date and time..."
+    )
+    
+    // Remember tab index with saveability for configuration changes
     var selectedTabIndex by rememberSaveable { mutableStateOf(0) }
 
-    LaunchedEffect(Unit, currentRoute) {
-        selectedTabIndex = Route.entries.find { it == currentRoute }?.ordinal ?: 0
+    // Update tab selection when route changes
+    LaunchedEffect(currentRoute) {
+        selectedTabIndex = Route.entries.indexOf(currentRoute).takeIf { it >= 0 } ?: 0
     }
 
     Row(
-        modifier = Modifier.padding(20.dp).fillMaxWidth(),
+        modifier = Modifier
+            .padding(20.dp)
+            .fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(
@@ -50,7 +58,10 @@ fun HeaderComponent(
             verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Text(
-                text = titleHeader, fontSize = 23.sp, lineHeight = 23.sp
+                text = titleHeader, 
+                fontSize = 23.sp, 
+                lineHeight = 23.sp,
+                fontWeight = FontWeight.Bold
             )
             TabRow(
                 selectedTabIndex = selectedTabIndex,
@@ -64,8 +75,7 @@ fun HeaderComponent(
                 },
                 divider = {},
                 tabs = {
-                    repeat(Route.entries.size) { index ->
-                        val route = Route.entries[index]
+                    Route.entries.forEachIndexed { index, route ->
                         Tab(
                             selected = selectedTabIndex == index,
                             onClick = {
@@ -91,7 +101,8 @@ fun HeaderComponent(
             horizontalAlignment = Alignment.End
         ) {
             Text(
-                text = "DATE", fontWeight = FontWeight.Bold
+                text = "DATE",
+                fontWeight = FontWeight.Bold
             )
             Text(
                 text = currentTimeDate,

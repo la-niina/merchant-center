@@ -26,7 +26,6 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -45,8 +44,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import org.apache.pdfbox.pdmodel.PDDocument
@@ -133,7 +130,7 @@ fun ReportsComponent(
     }
 
     LaunchedEffect(Unit) {
-        mainViewModel.loadCurrentDateTime()
+        mainViewModel.loadProductsForDate(LocalDate.now().toString())
         mainViewModel.loadProducts()
         mainViewModel.loadAllProducts()
     }
@@ -216,11 +213,14 @@ fun ReportsComponent(
                     }
 
                     // Export Button
-                    IconButton(
+                    Button(
                         onClick = {
                             isExportDialogVisible = true
                         }
                     ) {
+                        Text(
+                            text = "Export Report",
+                        )
                         Icon(
                             imageVector = Icons.Rounded.Download,
                             contentDescription = "Export Report"
@@ -349,16 +349,22 @@ fun ReportsComponent(
                 onDismiss = {
                     isExportDialogVisible = false
                 },
-                onExport = { format, fileName ->
+                onExport = { format, fileName, sellsTitle, CompanyName, address, contact ->
                     coroutineScope.launch {
-                        exportReport(
-                            fileName = fileName,
-                            period = selectedPeriod,
-                            format = format,
-                            startDate = startDate,
-                            endDate = endDate,
-                            products = exportPreviewData
-                        )
+                        if (fileName.isNotEmpty()) {
+                            exportReport(
+                                fileName = fileName,
+                                sellsTitle = sellsTitle,
+                                companyName = CompanyName,
+                                address = address,
+                                contact = contact,
+                                period = selectedPeriod,
+                                format = format,
+                                startDate = startDate,
+                                endDate = endDate,
+                                products = exportPreviewData
+                            )
+                        }
                     }
                     isExportDialogVisible = false
                 }
@@ -687,9 +693,14 @@ fun exportToExcel(products: List<SalesProducts>, file: File) {
 fun ExportReportDialog(
     previewData: List<SalesProducts>,
     onDismiss: () -> Unit,
-    onExport: (ExportFormat, String) -> Unit
+    onExport: (ExportFormat, String, String, String, String, String) -> Unit
 ) {
     var fileName by rememberSaveable { mutableStateOf("") }
+    var sellsTitle by rememberSaveable { mutableStateOf("") }
+    var companyName by rememberSaveable { mutableStateOf("") }
+    var companyAddress by rememberSaveable { mutableStateOf("") }
+    var companyContact by rememberSaveable { mutableStateOf("") }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Export Report") },
@@ -709,9 +720,47 @@ fun ExportReportDialog(
                 )
                 EditorTextField(
                     modifier = Modifier.fillMaxWidth(),
-                    value = fileName,
+                    value = sellsTitle,
+                    default = false,
+                    placeHolder = "Report Title",
                     onValueChange = {
-                        fileName = it
+                        sellsTitle = it
+                    }
+                )
+                EditorTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = companyName,
+                    default = false,
+                    placeHolder = "Company Name",
+                    onValueChange = {
+                        companyName = it
+                    }
+                )
+                EditorTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = companyAddress,
+                    default = false,
+                    placeHolder = "Company Address",
+                    onValueChange = {
+                        companyAddress = it
+                    }
+                )
+                EditorTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = companyContact,
+                    default = false,
+                    placeHolder = "Company Contact",
+                    onValueChange = {
+                        companyContact = it
+                    }
+                )
+                EditorTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = fileName,
+                    default = false,
+                    placeHolder = "File Name",
+                    onValueChange = {
+                        fileName = it.trim()
                     }
                 )
                 HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -719,8 +768,8 @@ fun ExportReportDialog(
                 ExportFormat.entries.forEach { format ->
                     Button(
                         onClick = {
-                            if (fileName.isNotBlank()) {
-                                onExport(format, fileName)
+                            if (fileName.isNotBlank() && sellsTitle.isNotBlank() && companyName.isNotBlank()) {
+                                onExport(format, fileName, sellsTitle, companyName, companyAddress, companyContact)
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -764,11 +813,15 @@ fun parseProductDate(timeString: String): LocalDate {
 // Modify the export report function
 fun exportReport(
     fileName: String,
+    sellsTitle: String,
+    companyName: String,
+    address: String,
+    contact: String,
     period: ReportPeriod,
     format: ExportFormat,
     startDate: LocalDate = LocalDate.now().minusWeeks(1),
     endDate: LocalDate = LocalDate.now(),
-    products: List<SalesProducts>
+    products: List<SalesProducts>,
 ) {
     val currentDate = LocalDate.now()
 
@@ -791,10 +844,10 @@ fun exportReport(
 
     // Generate filename with date and period
     val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-    val filename = if (fileName.isNotEmpty()) {
+    val finalFileName = if (fileName.isEmpty()) {
         "Sales_Report_${period.name}_${currentDate.format(formatter)}"
     } else {
-        "${fileName}_${currentDate.format(formatter)}"
+        "${fileName}_${period.name}_${currentDate.format(formatter)}"
     }
 
     // Determine export directory (cross-platform)
@@ -804,12 +857,12 @@ fun exportReport(
     exportDir.mkdirs()
 
     // Export based on selected format
-    val exportFile = File(exportDir, "$filename.${format.name.lowercase()}")
+    val exportFile = File(exportDir, "$finalFileName.${format.name.lowercase()}")
 
     // Wrap export in a try-catch to handle potential errors
     try {
         when (format) {
-            ExportFormat.PDF -> exportToPdf(filteredProducts, exportFile)
+            ExportFormat.PDF -> exportToPdf(filteredProducts, exportFile, sellsTitle, companyName, address, contact)
             ExportFormat.CSV -> exportToCsv(filteredProducts, exportFile)
             ExportFormat.XLSX -> exportToExcel(filteredProducts, exportFile)
         }
@@ -822,9 +875,17 @@ fun exportReport(
     }
 }
 
-fun exportToPdf(products: List<SalesProducts>, file: File) {
+fun exportToPdf(
+    products: List<SalesProducts>,
+    file: File,
+    sellsTitle: String,
+    companyName: String,
+    address: String,
+    contact: String
+) {
     require(products.isNotEmpty()) { "No products to export" }
     val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+    val currentDateTime = LocalDateTime.now()
 
     PDDocument().use { document ->
         var page = PDPage()
@@ -840,93 +901,280 @@ fun exportToPdf(products: List<SalesProducts>, file: File) {
             val pageWidth = page.mediaBox.width
             val pageHeight = page.mediaBox.height
             val margin = 50f
+            // Adjust column widths to ensure date fits properly within its column
+            val columnWidths = floatArrayOf(140f, 80f, 90f, 90f, 110f) 
+            val titleY = pageHeight - margin
+            // Increase spacing for the report summary
+            val tableTop = pageHeight - margin - 180f
+            val rowHeight = 20f
 
-            // Title
+            // Document Header
             contentStream.beginText()
-            contentStream.setFont(PDType1Font.HELVETICA_BOLD, 16f)
-            contentStream.newLineAtOffset(margin, pageHeight - margin)
-            contentStream.showText("Sales Report")
+            contentStream.setFont(PDType1Font.HELVETICA_BOLD, 20f)
+            contentStream.setNonStrokingColor(0, 0, 128) // Navy blue for title
+            contentStream.newLineAtOffset((pageWidth / 2) - 100, titleY)
+            contentStream.showText(sellsTitle)
             contentStream.endText()
 
-            // Totals Summary
+            // Company Info - Add more space after title
+            contentStream.beginText()
+            contentStream.setFont(PDType1Font.HELVETICA_BOLD, 12f)
+            contentStream.setNonStrokingColor(0, 0, 0) // Reset to black
+            contentStream.newLineAtOffset(margin, titleY - 40f)  // Increased vertical spacing
+            contentStream.showText(companyName)
+            contentStream.endText()
+
+            contentStream.beginText()
+            contentStream.setFont(PDType1Font.HELVETICA, 10f)
+            contentStream.newLineAtOffset(margin, titleY - 55f)  // Adjusted spacing
+            contentStream.showText(if(address.isNotEmpty()) address else "123 Power Avenue, Kampala, Uganda")
+            contentStream.endText()
+
+            contentStream.beginText()
+            contentStream.setFont(PDType1Font.HELVETICA, 10f)
+            contentStream.newLineAtOffset(margin, titleY - 70f)  // Adjusted spacing
+            contentStream.showText(if (contact.isNotEmpty()) contact else "Tel: +256 701 234567 | Email: info@powersolutions.com")
+            contentStream.endText()
+
+            // Report Summary Box - Move down to prevent overlapping with title
+            val summaryBoxX = pageWidth - margin - 200
+            val summaryBoxY = titleY - 95f  // Increased spacing from title
+            val summaryBoxWidth = 200f
+            val summaryBoxHeight = 65f
+
+            // Draw summary box
+            contentStream.setNonStrokingColor(240, 240, 250) // Light blue background
+            contentStream.addRect(summaryBoxX, summaryBoxY, summaryBoxWidth, summaryBoxHeight)
+            contentStream.fill()
+
+            // Reset color to black for text
+            contentStream.setNonStrokingColor(0, 0, 0)
+
+            // Summary Box Border
+            contentStream.setStrokingColor(0, 0, 128) // Navy border
+            contentStream.setLineWidth(1f)
+            contentStream.addRect(summaryBoxX, summaryBoxY, summaryBoxWidth, summaryBoxHeight)
+            contentStream.stroke()
+
+            // Calculate totals
             val totalProducts = products.size
-            val totalQuantity = products.sumOf { it.qty.toIntOrNull() ?: 0 }
+            val totalQuantity =
+                products.sumOf { it.qty.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
             val totalValue = products.sumOf {
                 (it.price.replace(",", "").toDoubleOrNull() ?: 0.0)
             }
 
+            // Summary Box Content
             contentStream.beginText()
-            contentStream.setFont(PDType1Font.HELVETICA, 12f)
-            contentStream.newLineAtOffset(margin, pageHeight - margin - 30f)
-            contentStream.showText("Total Products: $totalProducts")
-            contentStream.newLineAtOffset(0f, -20f)
-            contentStream.showText("Sold Items: $totalQuantity")
-            contentStream.newLineAtOffset(0f, -20f)
-            contentStream.showText("Total Value: ${"%,d".format(totalValue.toLong())} UGX")
+            contentStream.setFont(PDType1Font.HELVETICA_BOLD, 11f)
+            contentStream.newLineAtOffset(summaryBoxX + 10, summaryBoxY + summaryBoxHeight - 15)
+            contentStream.showText("REPORT SUMMARY")
             contentStream.endText()
+
+            contentStream.beginText()
+            contentStream.setFont(PDType1Font.HELVETICA, 9f)
+            contentStream.newLineAtOffset(summaryBoxX + 10, summaryBoxY + summaryBoxHeight - 30)
+            contentStream.showText("Total Products: $totalProducts")
+            contentStream.endText()
+
+            contentStream.beginText()
+            contentStream.setFont(PDType1Font.HELVETICA, 9f)
+            contentStream.newLineAtOffset(summaryBoxX + 10, summaryBoxY + summaryBoxHeight - 45)
+            contentStream.showText("Sold Items: $totalQuantity units")
+            contentStream.endText()
+
+            contentStream.beginText()
+            contentStream.setFont(PDType1Font.HELVETICA_BOLD, 10f)
+            contentStream.newLineAtOffset(summaryBoxX + 10, summaryBoxY + summaryBoxHeight - 60)
+            contentStream.showText("Total Revenue: ${"%,d".format(totalValue.toLong())} UGX")
+            contentStream.endText()
+
+            // Add horizontal divider
+            contentStream.setStrokingColor(0, 0, 128) // Navy line
+            contentStream.setLineWidth(1.5f)
+            contentStream.moveTo(margin, tableTop + 20)
+            contentStream.lineTo(pageWidth - margin, tableTop + 20)
+            contentStream.stroke()
 
             // Table Header
             val headers = arrayOf("Product Name", "Quantity", "Unit Price", "Total Price", "Date")
-            var yPosition = pageHeight - margin - 120f
 
-            // Draw table header
-            contentStream.setStrokingColor(
-                java.awt.Color.getColor("Gray", Color.LightGray.toArgb())
-            )
-            contentStream.setLineWidth(0.5f)
+            // Draw table header background
+            contentStream.setNonStrokingColor(0, 0, 128) // Navy blue for header bg
+            contentStream.addRect(margin, tableTop, pageWidth - (2 * margin), rowHeight)
+            contentStream.fill()
+
+            // Draw table header text
+            contentStream.setNonStrokingColor(255, 255, 255) // White text
+            var xPosition = margin + 5
 
             headers.forEachIndexed { index, header ->
                 contentStream.beginText()
                 contentStream.setFont(PDType1Font.HELVETICA_BOLD, 10f)
-                contentStream.newLineAtOffset(margin + (index * 110f), yPosition)
+                contentStream.newLineAtOffset(xPosition, tableTop + 7)
                 contentStream.showText(header)
                 contentStream.endText()
+                xPosition += columnWidths[index]
             }
 
-            // Draw header line
-            contentStream.moveTo(margin, yPosition - 5f)
-            contentStream.lineTo(pageWidth - margin, yPosition - 5f)
-            contentStream.stroke()
+            // Reset to black for data rows
+            contentStream.setNonStrokingColor(0, 0, 0)
+
+            // Setup for zebra striping
+            var isAlternate = false
+            var yPosition = tableTop - rowHeight
 
             // Product Data
-            yPosition -= 20f
             products.forEach { product ->
+                // Add zebra striping
+                if (isAlternate) {
+                    contentStream.setNonStrokingColor(
+                        240,
+                        240,
+                        250
+                    ) // Light blue for alternate rows
+                    contentStream.addRect(margin, yPosition, pageWidth - (2 * margin), rowHeight)
+                    contentStream.fill()
+                    contentStream.setNonStrokingColor(0, 0, 0) // Reset to black for text
+                }
+
                 // Calculate total price for this product
                 val unitPrice = product.price.replace(",", "").toDoubleOrNull() ?: 0.0
-                val perItem =
-                    unitPrice / (product.qty.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0)
+                val quantity = product.qty.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
+                val perItem = if (quantity > 0) unitPrice / quantity else 0.0
 
-                contentStream.beginText()
-                contentStream.setFont(PDType1Font.HELVETICA, 10f)
-                contentStream.newLineAtOffset(margin, yPosition)
-                contentStream.showText(product.productName)
-                contentStream.newLineAtOffset(110f, 0f)
-                contentStream.showText(product.qty)
-                contentStream.newLineAtOffset(110f, 0f)
-                contentStream.showText("${"%,d".format(perItem.toLong())} UGX")
-                contentStream.newLineAtOffset(110f, 0f)
-                contentStream.showText("${"%,d".format(unitPrice.toLong())} UGX")
-                contentStream.newLineAtOffset(110f, 0f)
-                contentStream.showText(formatDateForPdfExport(product.time))
-                contentStream.endText()
+                // Draw row data
+                val rowData = arrayOf(
+                    product.productName,
+                    product.qty,
+                    "${"%,d".format(perItem.toLong())} UGX",
+                    "${"%,d".format(unitPrice.toLong())} UGX",
+                    formatDateForPdfExport(product.time)
+                )
 
-                yPosition -= 20f
+                xPosition = margin + 5
+                rowData.forEachIndexed { index, data ->
+                    contentStream.beginText()
+                    contentStream.setFont(
+                        if (index == 0) PDType1Font.HELVETICA_BOLD else PDType1Font.HELVETICA,
+                        9f
+                    )
+                    contentStream.newLineAtOffset(xPosition, yPosition + 7)
+
+                    // Truncate long text to ensure it fits in the column
+                    val maxChars = when (index) {
+                        0 -> 25 // Product Name
+                        4 -> 12 // Date
+                        else -> 12 // Other columns
+                    }
+                    
+                    val displayText = if (data.length > maxChars)
+                        "${data.take(maxChars - 3)}..." else data
+
+                    contentStream.showText(displayText)
+                    contentStream.endText()
+                    xPosition += columnWidths[index]
+                }
+
+                yPosition -= rowHeight
+                isAlternate = !isAlternate
 
                 // Add a new page if running out of space
-                if (yPosition < margin) {
+                if (yPosition < margin + 30) {
+                    // Draw table border on current page
+                    contentStream.setStrokingColor(0, 0, 128)
+                    contentStream.setLineWidth(0.5f)
+                    contentStream.addRect(
+                        margin, yPosition + rowHeight,
+                        pageWidth - (2 * margin), tableTop - yPosition
+                    )
+                    contentStream.stroke()
+
+                    // Create and setup new page
                     page = PDPage()
                     document.addPage(page)
-                    yPosition = pageHeight - margin
+                    contentStream.close()
+
+                    // Setup new content stream
+                    val newContentStream = PDPageContentStream(
+                        document,
+                        page,
+                        PDPageContentStream.AppendMode.OVERWRITE,
+                        true
+                    )
+
+                    // Add continuation header with more spacing
+                    newContentStream.beginText()
+                    newContentStream.setFont(PDType1Font.HELVETICA_BOLD, 14f)
+                    newContentStream.setNonStrokingColor(0, 0, 128)
+                    newContentStream.newLineAtOffset(margin, pageHeight - margin)
+                    newContentStream.showText("${sellsTitle} (Continued)")
+                    newContentStream.endText()
+
+                    // Reset table position with better spacing
+                    yPosition = pageHeight - margin - 50
+
+                    // Re-draw table header on new page
+                    newContentStream.setNonStrokingColor(0, 0, 128)
+                    newContentStream.addRect(margin, yPosition, pageWidth - (2 * margin), rowHeight)
+                    newContentStream.fill()
+
+                    // Table header text on new page
+                    newContentStream.setNonStrokingColor(255, 255, 255)
+                    xPosition = margin + 5
+
+                    headers.forEachIndexed { index, header ->
+                        newContentStream.beginText()
+                        newContentStream.setFont(PDType1Font.HELVETICA_BOLD, 10f)
+                        newContentStream.newLineAtOffset(xPosition, yPosition + 7)
+                        newContentStream.showText(header)
+                        newContentStream.endText()
+                        xPosition += columnWidths[index]
+                    }
+
+                    newContentStream.setNonStrokingColor(0, 0, 0)
+                    yPosition -= rowHeight
+                    return@forEach
+                    isAlternate = false
                 }
             }
 
-            // Footer with timestamp
-            val currentDateTime = LocalDateTime.now()
+            // Draw final table border
+            contentStream.setStrokingColor(0, 0, 128)
+            contentStream.setLineWidth(0.5f)
+            contentStream.addRect(
+                margin, yPosition,
+                pageWidth - (2 * margin), tableTop - yPosition
+            )
+            contentStream.stroke()
 
+            // Add Summary footer
+            val footerY = yPosition - 40
+            contentStream.setNonStrokingColor(0, 0, 128)
+            contentStream.beginText()
+            contentStream.setFont(PDType1Font.HELVETICA_BOLD, 11f)
+            contentStream.newLineAtOffset(margin, footerY)
+            contentStream.showText("TOTALS:")
+            contentStream.endText()
+
+            contentStream.beginText()
+            contentStream.setFont(PDType1Font.HELVETICA_BOLD, 11f)
+            contentStream.newLineAtOffset(margin + 100, footerY)
+            contentStream.showText("${"%,d".format(totalValue.toLong())} UGX")
+            contentStream.endText()
+
+            // Footer with timestamp and page info
+            contentStream.setNonStrokingColor(100, 100, 100) // Gray for footer
             contentStream.beginText()
             contentStream.setFont(PDType1Font.HELVETICA, 8f)
             contentStream.newLineAtOffset(margin, margin)
             contentStream.showText("Generated on: ${currentDateTime.format(formatter)}")
+            contentStream.endText()
+
+            contentStream.beginText()
+            contentStream.setFont(PDType1Font.TIMES_ITALIC, 8f)
+            contentStream.newLineAtOffset(pageWidth - margin - 150, margin)
+            contentStream.showText("$sellsTitle Report")
             contentStream.endText()
         }
 
