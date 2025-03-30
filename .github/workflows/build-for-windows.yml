@@ -82,6 +82,7 @@ jobs:
               $relativePath = $msiFile.FullName.Replace($env:GITHUB_WORKSPACE + "\", "")
               echo "MSI_PATH=$relativePath" >> $env:GITHUB_OUTPUT
               echo "MSI_NAME=$($msiFile.Name)" >> $env:GITHUB_OUTPUT
+              echo "MSI_VERSION=($msiFile.Version)" >> $env:GITHUB_OUTPUT
               echo "Found MSI at: $relativePath"
           } else {
               echo "::error::No MSI file found in $msiPath"
@@ -97,17 +98,17 @@ jobs:
           if-no-files-found: error
 
       - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: ${{ steps.find_msi.outputs.MSI_PATH }}
           name: Release ${{ steps.get_version.outputs.VERSION }}
-          draft: false
-          prerelease: false
+          draft: true
+          release: true
           fail_on_unmatched_files: true
           generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.TOKEN }}  # Use default token
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Use default token
 
       - name: Upload Release Asset (Fallback)
         if: failure() && startsWith(github.ref, 'refs/tags/v')
