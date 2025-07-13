@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,6 +25,8 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.MonetizationOn
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
@@ -58,14 +61,19 @@ import presentation.SalesListing
 import presentation.SalesTotal
 import presentation.SearchTextField
 import viewmodel.MainViewModel
+import viewmodel.ProductViewModel
+import domain.model.Product
+import java.math.BigDecimal
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import androidx.compose.foundation.clickable
 
 @Composable
 fun SalesComponent(
     mainViewModel: MainViewModel = MainViewModel(),
+    productViewModel: ProductViewModel = ProductViewModel(),
 ) {
     val productsSales by mainViewModel.productsList.collectAsState()
     val currentDateTime by mainViewModel.currentDateTime.collectAsState()
@@ -82,7 +90,9 @@ fun SalesComponent(
                 productsSales.sortedByDescending { it.time }
             } else {
                 productsSales.filter {
-                    it.productName.contains(searchInput, ignoreCase = true)
+                    it.productName.contains(searchInput, ignoreCase = true) ||
+                    it.formattedTotalPrice().contains(searchInput, ignoreCase = true) ||
+                    it.qty.toString().contains(searchInput, ignoreCase = true)
                 }.sortedByDescending { it.time }
             }
         }
@@ -169,9 +179,9 @@ fun SalesComponent(
                     ) { product ->
                         SalesListing(
                             productName = product.productName.ifBlank { "Unknown Product" },
-                            qty = product.qty,
+                            qty = product.qty.toString(),
                             time = product.formattedTime(),
-                            price = product.formattedPrice(),
+                            price = product.formattedTotalPrice(),
                             onRemove = {
                                 coroutineScope.launch {
                                     mainViewModel.removeProductById(product.pid)
@@ -220,10 +230,11 @@ fun SalesComponent(
         // Add Sale Dialog
         if (showAddSaleDialog) {
             AddSaleDialog(
+                productViewModel = productViewModel,
                 onDismissRequest = { showAddSaleDialog = false },
-                onAddSale = { name, qty, price ->
+                onAddSale = { product, qty, price ->
                     mainViewModel.scope.launch {
-                        mainViewModel.addProduct(name, qty, price.toDouble())
+                        mainViewModel.addProduct(product.productName, qty, price)
                         showAddSaleDialog = false
                     }
                 }
@@ -259,6 +270,7 @@ fun SalesSectionHeader(
                 SearchTextField(
                     value = searchInput,
                     onValueChange = onSearchChange,
+                    placeholder = "Search sales by product name, price, or quantity",
                     modifier = Modifier.weight(0.8F)
                 )
 
@@ -412,38 +424,72 @@ fun HeaderColumn(
 
 @Composable
 fun AddSaleDialog(
+    productViewModel: ProductViewModel,
     onDismissRequest: () -> Unit,
-    onAddSale: (String, String, String) -> Unit,
+    onAddSale: (Product, Int, BigDecimal) -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
-
+    val products by productViewModel.productsList.collectAsState()
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var selectedProduct by remember { mutableStateOf<Product?>(null) }
     var quantity by rememberSaveable { mutableStateOf("1") }
     var price by rememberSaveable { mutableStateOf("") }
-    var searchQuery by rememberSaveable { mutableStateOf("") }
     var productNameError by remember { mutableStateOf<String?>(null) }
     var priceError by remember { mutableStateOf<String?>(null) }
-
+    val filteredProducts = remember(searchQuery, products) {
+        products.filter {
+            it.isActive && (it.productName.contains(searchQuery, true) || it.productNumber.contains(searchQuery, true))
+        }
+    }
+    // When a product is selected, auto-fill price and quantity
+    LaunchedEffect(selectedProduct) {
+        selectedProduct?.let {
+            quantity = "1"
+            price = it.unitPrice.setScale(0, java.math.RoundingMode.HALF_UP).toPlainString()
+        }
+    }
+    // Auto-calculate total price when quantity or selectedProduct changes
+    LaunchedEffect(quantity, selectedProduct) {
+        selectedProduct?.let {
+            val qty = quantity.trim().toIntOrNull() ?: 1
+            val total = it.unitPrice.multiply(java.math.BigDecimal.valueOf(qty.toLong()))
+            price = total.setScale(0, java.math.RoundingMode.HALF_UP).toPlainString()
+        }
+    }
+    val qtyInt = quantity.trim().toIntOrNull() ?: 1
+    val notEnoughStock = selectedProduct != null && qtyInt > selectedProduct!!.stockQuantity
+    val outOfStock = selectedProduct != null && selectedProduct!!.stockQuantity <= 0
+    val canCompleteSale = selectedProduct != null && !outOfStock && !notEnoughStock && price.isNotBlank()
     val completeSale = {
         when {
-            searchQuery.isBlank() -> {
-                productNameError = "Product name is required"
+            selectedProduct == null -> {
+                productNameError = "Select a product"
             }
             price.isBlank() -> {
                 priceError = "Price is required"
             }
+            outOfStock -> {
+                productNameError = "Product is out of stock"
+            }
+            notEnoughStock -> {
+                productNameError = "Not enough stock"
+            }
             else -> {
                 coroutineScope.launch {
+                    val qty = qtyInt
+                    val priceValue = price.trim().replace(",", "").toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
+                    // Decrement stock in ProductViewModel
+                    productViewModel.updateStockQuantity(selectedProduct!!.productId, selectedProduct!!.stockQuantity - qty)
                     onAddSale(
-                        searchQuery.trim(),
-                        quantity.trim().ifBlank { "1" },
-                        price.trim().replace(",", "")
+                        selectedProduct!!,
+                        qty,
+                        priceValue
                     )
                     onDismissRequest()
                 }
             }
         }
     }
-
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(
@@ -485,16 +531,16 @@ fun AddSaleDialog(
                         )
                     }
                 }
-
-                // Product Selection
+                // Product Autocomplete Dropdown
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = {
                         searchQuery = it
+                        selectedProduct = null
                         if (it.isNotBlank()) productNameError = null
                     },
-                    label = { Text("Product Name") },
-                    placeholder = { Text("Enter product name") },
+                    label = { Text("Product Name or Number") },
+                    placeholder = { Text("Type to search products...") },
                     singleLine = true,
                     isError = productNameError != null,
                     supportingText = productNameError?.let { { Text(it) } },
@@ -506,18 +552,75 @@ fun AddSaleDialog(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                    )
+                    ),
+                    leadingIcon = {
+                        Icon(
+                            Icons.Rounded.Search,
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { 
+                                searchQuery = ""
+                                selectedProduct = null
+                            }) {
+                                Icon(
+                                    Icons.Rounded.Remove,
+                                    contentDescription = "Clear",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
                 )
-
+                if (searchQuery.isNotBlank() && filteredProducts.isNotEmpty() && selectedProduct == null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .padding(bottom = 8.dp)
+                    ) {
+                        filteredProducts.take(8).forEach { product ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .height(36.dp)
+                                    .weight(1f)
+                                    .let { m ->
+                                        Modifier
+                                            .then(m)
+                                            .padding(horizontal = 8.dp)
+                                            .clickable {
+                                                selectedProduct = product
+                                                searchQuery = product.displayName()
+                                            }
+                                    },
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(product.displayName(), modifier = Modifier.weight(1f))
+                                if (!product.isInStock()) {
+                                    Text("Out of stock", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
+                // Show selected product details
+                selectedProduct?.let { product ->
+                    Text("Stock: ${product.stockQuantity}", color = if (product.isInStock()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    if (notEnoughStock) {
+                        Text("Not enough stock for this sale", color = MaterialTheme.colorScheme.error)
+                    } else if (outOfStock) {
+                        Text("Product is out of stock", color = MaterialTheme.colorScheme.error)
+                    }
+                }
                 // Quantity Input
                 OutlinedTextField(
                     value = quantity,
-                    onValueChange = {
-                        quantity = it
-                        /**if (it.isBlank() || it.matches(Regex("^\\d+$"))) {
-
-                        }**/
-                    },
+                    onValueChange = { quantity = it },
                     label = { Text("Quantity") },
                     placeholder = { Text("Enter quantity") },
                     singleLine = true,
@@ -531,27 +634,10 @@ fun AddSaleDialog(
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline
                     )
                 )
-
                 // Price Display
                 OutlinedTextField(
                     value = price,
-                    onValueChange = {
-                        // show auto change to UGX current format 200, 2,000, 30,000, 100,000 etc
-                        price = it.replace(Regex(","), "").let {
-                            if (it.isEmpty()) ""
-                            else try {
-                                val number = it.toLong()
-                                NumberFormat.getNumberInstance(Locale.US).format(number)
-                            } catch (e: Exception) {
-                                it
-                            }
-                        }
-
-                       /** if (it.isEmpty() || it.matches(Regex("^\\d+$|^\\d{1,3}(,\\d{3})*$"))) {
-                            price = it
-                            if (it.isNotBlank()) priceError = null
-                        } **/
-                    },
+                    onValueChange = { price = it },
                     label = { Text("Total Price") },
                     placeholder = { Text("Enter price in UGX") },
                     singleLine = true,
@@ -569,16 +655,16 @@ fun AddSaleDialog(
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline
                     )
                 )
-
                 // Complete Sale Button
                 Button(
                     onClick = { completeSale() },
+                    enabled = canCompleteSale,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(50.dp),
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
+                        containerColor = if (canCompleteSale) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
                     )
                 ) {
                     Icon(Icons.Rounded.MonetizationOn, contentDescription = null)

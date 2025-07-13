@@ -22,6 +22,12 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
+import domain.model.SalesProduct
+import domain.model.toSalesProduct
+import domain.model.toDatabaseModel
+import java.math.BigDecimal
+import kotlin.text.toBigDecimalOrNull
+import core.database.DatabaseMigration
 
 class MainViewModel {
     // Optimize SQLite connection with larger cache and better write-ahead logging
@@ -38,10 +44,10 @@ class MainViewModel {
     val scope = CoroutineScope(limitedDispatcher + SupervisorJob())
 
     // Use StateFlow with proper capacity hint
-    private val _productsList = MutableStateFlow<List<SalesProducts>>(emptyList())
+    private val _productsList = MutableStateFlow<List<SalesProduct>>(emptyList())
     val productsList = _productsList.asStateFlow()
 
-    private val _allProductsList = MutableStateFlow<List<SalesProducts>>(emptyList())
+    private val _allProductsList = MutableStateFlow<List<SalesProduct>>(emptyList())
     val allproductsList = _allProductsList.asStateFlow()
 
     // Cache formatters for better performance
@@ -61,6 +67,8 @@ class MainViewModel {
 
     init {
         scope.launch {
+            // Run database migration first
+            runDatabaseMigration()
             loadInitialData()
             startTimeUpdates()
         }
@@ -92,13 +100,12 @@ class MainViewModel {
                 val products = queries.selectAll()
                     .executeAsList()
                     .asSequence()
-                    .filter { it.time.startsWith(currentDateStr) }
                     .map { it.toSalesProduct() }
+                    .filter { it.time.toLocalDate().toString() == currentDateStr }
                     .toList()
-                
                 _productsList.value = products
             } catch (e: Exception) {
-                println("Error loading products: ${e.message}")
+                println("Error loading products: "+e.message)
                 _productsList.value = emptyList()
             }
         }
@@ -112,32 +119,37 @@ class MainViewModel {
                 val products = queries.selectAll().executeAsList().map { it.toSalesProduct() }
                 _allProductsList.value = products
             } catch (e: Exception) {
-                println("Error loading all products: ${e.message}")
+                println("Error loading all products: "+e.message)
                 _allProductsList.value = emptyList()
             }
         }
     }
 
-    fun refreshProducts() {
-        loadProducts()
-    }
+    fun refreshProducts() = loadProducts()
 
-    private fun getTotalPriceOfProducts(): Double {
+    private fun getTotalPriceOfProducts(): BigDecimal {
         return try {
-            val products = queries.selectTodaysProducts(currentDateStr + "%").executeAsList()
-            products.sumOf { product -> product.price.toDoubleOrNull() ?: 0.0 }
+            val products = queries.selectTodaysProducts(currentDateStr + "%").executeAsList().map { it.toSalesProduct() }
+            products.sumOf { it.totalPrice }
         } catch (e: Exception) {
-            println("Error calculating total price: ${e.message}")
-            0.0
+            println("Error calculating total price: "+e.message)
+            BigDecimal.ZERO
         }
     }
 
-    private fun getTotalPriceOfAllProducts(): Double {
+    private fun getTotalPriceOfAllProducts(): BigDecimal {
         return try {
-            queries.selectSumOfAllPrices().executeAsOne().SUM ?: 0.0
+            val sum = queries.selectSumOfAllPrices().executeAsOne()
+            when (sum) {
+                is Double -> BigDecimal.valueOf(sum)
+                is Float -> BigDecimal.valueOf(sum.toDouble())
+                is Long -> BigDecimal.valueOf(sum)
+                is Int -> BigDecimal.valueOf(sum.toLong())
+                else -> BigDecimal.ZERO
+            }
         } catch (e: Exception) {
-            println("Error calculating total price: ${e.message}")
-            0.0
+            println("Error calculating total price: "+e.message)
+            BigDecimal.ZERO
         }
     }
 
@@ -148,44 +160,47 @@ class MainViewModel {
                 val products = queries.selectTodaysProducts(date + "%").executeAsList().map { it.toSalesProduct() }
                 _productsList.value = products
             } catch (e: Exception) {
-                println("Error loading products for date: ${e.message}")
+                println("Error loading products for date: "+e.message)
                 _productsList.value = emptyList()
             }
         }
     }
 
     fun addProduct(
-        productName: String, qty: String, price: Double
+        productName: String, qty: Int, unitPrice: BigDecimal
     ) {
         scope.launch {
             try {
                 mutex.withLock {
                     val pid = generateUniqueId()
-                    val time = getCurrentTimestamp()
-                    val priceStr = price.toString()
-
-                    // Validate before creating object
-                    if (productName.isBlank() || productName.length > 100 || price < 0) {
-                        throw IllegalArgumentException("Invalid product data")
-                    }
-                    
-                    // Insert directly to avoid creating temporary objects
-                    queries.insertProduct(
+                    val now = getCurrentTimestamp()
+                    val totalPrice = unitPrice.multiply(BigDecimal.valueOf(qty.toLong()))
+                    val salesProduct = SalesProduct(
                         pid = pid,
                         productName = productName,
                         qty = qty,
-                        time = time,
-                        price = priceStr
+                        unitPrice = unitPrice,
+                        totalPrice = totalPrice,
+                        time = now,
+                        createdAt = now,
+                        updatedAt = now
                     )
-                    
-                    // Only update the list if it's a product from today
-                    if (time.startsWith(currentDateStr)) {
-                        val newProduct = SalesProducts(pid, productName, qty, time, priceStr)
-                        _productsList.update { it + newProduct }
+                    queries.insertProduct(
+                        pid = salesProduct.pid.toLong(),
+                        productName = salesProduct.productName,
+                        qty = salesProduct.qty.toLong(),
+                        unitPrice = salesProduct.unitPrice.toString(),
+                        totalPrice = salesProduct.totalPrice.toString(),
+                        time = salesProduct.time.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                        created_at = salesProduct.createdAt.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME),
+                        updated_at = salesProduct.updatedAt.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+                    )
+                    if (salesProduct.time.toLocalDate().toString() == currentDateStr) {
+                        _productsList.update { it + salesProduct }
                     }
                 }
             } catch (e: Exception) {
-                println("Error adding product: ${e.message}")
+                println("Error adding product: "+e.message)
             }
         }
     }
@@ -194,13 +209,12 @@ class MainViewModel {
         scope.launch {
             try {
                 mutex.withLock {
-                    queries.deleteById(pid)
-                    // Efficient filter with immutable list
+                    queries.deleteById(pid.toLong())
                     _productsList.update { it.filterNot { product -> product.pid == pid } }
                     _allProductsList.update { it.filterNot { product -> product.pid == pid } }
                 }
             } catch (e: Exception) {
-                println("Error removing product: ${e.message}")
+                println("Error removing product: "+e.message)
             }
         }
     }
@@ -214,81 +228,46 @@ class MainViewModel {
                     _allProductsList.value = emptyList()
                 }
             } catch (e: Exception) {
-                println("Error clearing products: ${e.message}")
+                println("Error clearing products: "+e.message)
             }
         }
     }
 
-    // Cached formatters for better performance
-    private val priceFormatter = "%,d"
-    
     fun getFormattedTotalPriceOfAllProducts(): String {
         val totalPrice = getTotalPriceOfAllProducts()
-        return "${priceFormatter.format(totalPrice.toLong())} UGX"
+        return "%s UGX".format(totalPrice.setScale(0, java.math.RoundingMode.HALF_UP).toPlainString())
     }
 
     fun getFormattedTotalPriceOfProducts(): String {
         val totalPrice = getTotalPriceOfProducts()
-        return "${priceFormatter.format(totalPrice.toLong())} UGX"
+        return "%s UGX".format(totalPrice.setScale(0, java.math.RoundingMode.HALF_UP).toPlainString())
     }
 
-    // Generate a unique numeric ID
     private fun generateUniqueId(): Int {
         return secureRandom.nextInt(Int.MAX_VALUE)
     }
 
-    // Generate current timestamp
-    private fun getCurrentTimestamp(): String {
-        return LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+    private fun getCurrentTimestamp(): LocalDateTime {
+        return LocalDateTime.now()
     }
 
-    // Extension function to convert database result to domain model
-    private fun pherus.merchant.center.SalesProducts.toSalesProduct(): SalesProducts {
-        return SalesProducts(pid, productName, qty, time, price)
-    }
-    
     private fun getCurrentFormattedDateTime(): String {
         val currentDateTime = LocalDateTime.now()
         val dayOfWeek = currentDateTime.format(dayNameFormatter)
         val formattedDate = currentDateTime.format(dateFormatter)
         val formattedTime = currentDateTime.format(timeFormatter)
-
         return "$dayOfWeek - $formattedDate $formattedTime"
     }
-}
 
-data class SalesProducts(
-    val pid: Int, val productName: String, val qty: String, val time: String, val price: String
-) {
-    // More efficient validation
-    fun isValid(): Boolean = productName.isNotBlank() && 
-                            productName.length <= 100 && 
-                            price.toDoubleOrNull()?.let { it >= 0.0 } ?: false
-
-    // Cached price formatting for better performance
-    private val priceFormatter = "%,d"
-    
-    // Formatted price in UGX with locale-specific formatting
-    fun formattedPrice(): String {
-        return try {
-            val priceValue = price.toDoubleOrNull()?.toLong() ?: 0L
-            "${priceFormatter.format(priceValue)} UGX"
-        } catch (e: Exception) {
-            "0 UGX"
-        }
-    }
-
-    // Cached formatter for better performance
-    private companion object {
-        val timeFormatter by lazy { DateTimeFormatter.ofPattern("h:mm a") }
-    }
-    
-    // Formatted time in a readable format
-    fun formattedTime(): String = time.takeIf { it.isNotBlank() }?.let {
+    private suspend fun runDatabaseMigration() {
         try {
-            LocalDateTime.parse(it).format(timeFormatter)
+            println("Starting database migration...")
+            DatabaseMigration.migrateDatabase(driver, database)
+            println("Database migration completed successfully")
         } catch (e: Exception) {
-            "Unknown Time"
+            println("Database migration failed: ${e.message}")
+            // If migration fails, we'll continue with the current schema
+            // The app will handle missing columns gracefully
         }
-    } ?: "Unknown Time"
+    }
 }

@@ -1,5 +1,6 @@
 package presentation
 
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,7 +27,8 @@ import androidx.compose.ui.unit.sp
 fun SearchTextField(
     modifier: Modifier = Modifier,
     value: String,
-    onValueChange: (String) -> Unit
+    onValueChange: (String) -> Unit,
+    placeholder: String = "Search item by name"
 ) {
     ElevatedCard(
         modifier = modifier,
@@ -40,7 +42,7 @@ fun SearchTextField(
             onValueChange = onValueChange,
             placeholder = {
                 Text(
-                    "Search item by name",
+                    placeholder,
                     fontSize = 12.sp,
                     lineHeight = 12.sp,
                     fontWeight = FontWeight.Normal,
@@ -79,7 +81,7 @@ fun SearchTextField(
                 cursorColor = MaterialTheme.colorScheme.onSecondary
             ),
             modifier = Modifier
-                .width(450.dp)
+                .fillMaxWidth()
                 .height(48.dp)
         )
     }

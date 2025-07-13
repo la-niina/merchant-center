@@ -1,9 +1,13 @@
+-- Improved SalesProducts table with better data types and constraints
 CREATE TABLE SalesProducts (
-  pid INTEGER PRIMARY KEY NOT NULL,
-  productName TEXT NOT NULL CHECK(length(productName) > 0 AND length(productName) <= 100),
-  qty TEXT NOT NULL,
+  pid INTEGER PRIMARY KEY,
+  productName TEXT NOT NULL,
+  qty INTEGER NOT NULL,
+  unitPrice TEXT NOT NULL,
+  totalPrice TEXT NOT NULL,
   time TEXT NOT NULL,
-  price TEXT NOT NULL CHECK(CAST(price AS REAL) >= 0)
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
 -- Improved indices for faster queries
@@ -12,22 +16,47 @@ CREATE INDEX idx_sales_products_name ON SalesProducts(productName);
 
 -- Optimized insert statement with parameter binding
 insertProduct:
-INSERT INTO SalesProducts (pid, productName, qty, time, price)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO SalesProducts (pid, productName, qty, unitPrice, totalPrice, time, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 -- Query all products with column selection
 selectAll:
-SELECT pid, productName, qty, time, price FROM SalesProducts;
+SELECT pid, productName, qty, unitPrice, totalPrice, time, created_at, updated_at 
+FROM SalesProducts 
+ORDER BY time DESC;
 
 -- Query filtered by date prefix with index usage
 selectTodaysProducts:
-SELECT pid, productName, qty, time, price FROM SalesProducts 
+SELECT pid, productName, qty, unitPrice, totalPrice, time, created_at, updated_at 
+FROM SalesProducts 
 WHERE time LIKE ? 
-ORDER BY pid DESC;
+ORDER BY time DESC;
 
--- Optimized aggregation query
+-- Query products by date range
+selectProductsByDateRange:
+SELECT pid, productName, qty, unitPrice, totalPrice, time, created_at, updated_at 
+FROM SalesProducts 
+WHERE time BETWEEN ? AND ? 
+ORDER BY time DESC;
+
+-- Optimized aggregation query for total revenue
 selectSumOfAllPrices:
-SELECT SUM(CAST(price AS REAL)) FROM SalesProducts;
+SELECT SUM(CAST(totalPrice AS REAL)) FROM SalesProducts;
+
+-- Query for daily revenue
+selectDailyRevenue:
+SELECT time sale_date, SUM(CAST(totalPrice AS REAL)) daily_total 
+FROM SalesProducts 
+WHERE time LIKE ? 
+GROUP BY time;
+
+-- Query for revenue by date range
+selectRevenueByDateRange:
+SELECT time sale_date, SUM(CAST(totalPrice AS REAL)) daily_total 
+FROM SalesProducts 
+WHERE time BETWEEN ? AND ? 
+GROUP BY time 
+ORDER BY sale_date DESC;
 
 -- Delete by ID with parameter binding
 deleteById:
@@ -36,6 +65,19 @@ DELETE FROM SalesProducts WHERE pid = ?;
 -- Optimized bulk delete
 deleteAll:
 DELETE FROM SalesProducts;
+
+-- Query for product statistics
+selectProductStats:
+SELECT 
+  productName,
+  COUNT(*) sale_count,
+  SUM(qty) total_quantity,
+  SUM(CAST(totalPrice AS REAL)) total_revenue,
+  AVG(CAST(unitPrice AS REAL)) avg_unit_price
+FROM SalesProducts 
+WHERE time BETWEEN ? AND ? 
+GROUP BY productName 
+ORDER BY total_revenue DESC;
 
 -- Transaction wrapper for batch operations
 beginTransaction:
