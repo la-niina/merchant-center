@@ -1,0 +1,86 @@
+-- Products table for product catalog
+CREATE TABLE Products (
+  productId INTEGER PRIMARY KEY AUTOINCREMENT,
+  productNumber TEXT UNIQUE NOT NULL,
+  productName TEXT NOT NULL,
+  unitPrice TEXT NOT NULL,
+  description TEXT,
+  category TEXT,
+  stockQuantity INTEGER DEFAULT 0,
+  isActive INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indices for better search performance
+CREATE INDEX idx_products_number ON Products(productNumber);
+CREATE INDEX idx_products_name ON Products(productName);
+CREATE INDEX idx_products_category ON Products(category);
+CREATE INDEX idx_products_active ON Products(isActive);
+
+-- Insert new product
+insertProduct:
+INSERT INTO Products (productNumber, productName, unitPrice, description, category, stockQuantity)
+VALUES (?, ?, ?, ?, ?, ?);
+
+-- Update product
+updateProduct:
+UPDATE Products 
+SET productName = ?, unitPrice = ?, description = ?, category = ?, stockQuantity = ?, updated_at = CURRENT_TIMESTAMP
+WHERE productId = ?;
+
+-- Delete product (soft delete by setting isActive = 0)
+deactivateProduct:
+UPDATE Products SET isActive = 0, updated_at = CURRENT_TIMESTAMP WHERE productId = ?;
+
+-- Get all active products
+selectAllActive:
+SELECT productId, productNumber, productName, unitPrice, description, category, stockQuantity, created_at, updated_at
+FROM Products 
+WHERE isActive = 1 
+ORDER BY productName;
+
+-- Search products by name or number
+searchProducts:
+SELECT productId, productNumber, productName, unitPrice, description, category, stockQuantity, created_at, updated_at
+FROM Products 
+WHERE isActive = 1 
+  AND (productName LIKE '%' || ? || '%' OR productNumber LIKE '%' || ? || '%')
+ORDER BY productName;
+
+-- Get product by ID
+selectProductById:
+SELECT productId, productNumber, productName, unitPrice, description, category, stockQuantity, created_at, updated_at
+FROM Products 
+WHERE productId = ? AND isActive = 1;
+
+-- Get product by number
+selectProductByNumber:
+SELECT productId, productNumber, productName, unitPrice, description, category, stockQuantity, created_at, updated_at
+FROM Products 
+WHERE productNumber = ? AND isActive = 1;
+
+-- Get products by category
+selectProductsByCategory:
+SELECT productId, productNumber, productName, unitPrice, description, category, stockQuantity, created_at, updated_at
+FROM Products 
+WHERE category = ? AND isActive = 1
+ORDER BY productName;
+
+-- Update stock quantity
+updateStockQuantity:
+UPDATE Products 
+SET stockQuantity = ?, updated_at = CURRENT_TIMESTAMP 
+WHERE productId = ?;
+
+-- Get product statistics
+selectProductStats:
+SELECT 
+  category,
+  COUNT(*) product_count,
+  SUM(stockQuantity) total_stock,
+  AVG(unitPrice) avg_price
+FROM Products 
+WHERE isActive = 1 
+GROUP BY category 
+ORDER BY product_count DESC; 

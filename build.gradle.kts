@@ -23,7 +23,6 @@ sqldelight {
     databases {
         create("Database") {
             packageName.set("pherus.merchant.center")
-            dialect("app.cash.sqldelight:mysql-dialect:2.0.2")
         }
     }
 }

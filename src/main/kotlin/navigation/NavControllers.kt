@@ -11,9 +11,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import components.HeaderComponent
+import components.ProductComponent
 import components.ReportsComponent
 import components.SalesComponent
 import viewmodel.MainViewModel
+import viewmodel.ProductViewModel
 import java.time.LocalDate
 
 @Composable
@@ -26,6 +28,7 @@ fun NavControllers(
     LaunchedEffect(Unit, currentRoute) {
         when (currentRoute) {
             Route.Sales -> mainViewModel.loadProducts()
+            Route.Products -> { /* Products are loaded by ProductComponent */ }
             Route.Reports -> mainViewModel.loadAllProducts()
         }
     }
@@ -49,6 +52,10 @@ fun NavControllers(
             when (currentRoute) {
                 Route.Sales -> SalesComponent(
                     mainViewModel = mainViewModel,
+                )
+
+                Route.Products -> ProductComponent(
+                    productViewModel = ProductViewModel()
                 )
 
                 Route.Reports -> ReportsComponent(

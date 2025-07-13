@@ -57,7 +57,7 @@ import org.apache.poi.ss.usermodel.IndexedColors
 import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import presentation.EditorTextField
 import viewmodel.MainViewModel
-import viewmodel.SalesProducts
+import domain.model.SalesProduct
 import java.awt.SystemTray
 import java.awt.Toolkit
 import java.awt.TrayIcon
@@ -93,10 +93,10 @@ fun ReportsComponent(
     val products by mainViewModel.allproductsList.collectAsState()
 
     // Enhanced filtering function with custom date range support
-    fun filterProductsByPeriod(products: List<SalesProducts>): List<SalesProducts> {
+    fun filterProductsByPeriod(products: List<SalesProduct>): List<SalesProduct> {
         return products.filter { product ->
             try {
-                val productDate = parseProductDate(product.time)
+                val productDate = product.time.toLocalDate()
                 when (selectedPeriod) {
                     ReportPeriod.DIALY ->
                         productDate.isAfter(LocalDate.now().minusDays(1)) ||
@@ -263,9 +263,8 @@ fun ReportsComponent(
                         )
                         Text(
                             text = "Total Value: ${
-                                exportPreviewData.sumOf {
-                                    it.price.toDoubleOrNull() ?: 0.0
-                                }.let { "UGX ${"%,d".format(it.toLong())}" }
+                                exportPreviewData.sumOf { it.totalPrice.toDouble() }
+                                    .let { "UGX ${"%,d".format(it.toLong())}" }
                             }",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(bottom = 8.dp)
@@ -302,7 +301,7 @@ fun ReportsComponent(
                                     modifier = Modifier.weight(0.3f)
                                 ) {
                                     Text(
-                                        text = product.qty,
+                                        text = product.qty.toString(),
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
@@ -310,7 +309,7 @@ fun ReportsComponent(
                                     modifier = Modifier.weight(0.5f)
                                 ) {
                                     Text(
-                                        text = product.formattedPrice(),
+                                        text = product.formattedTotalPrice(),
                                         style = MaterialTheme.typography.bodySmall
                                     )
                                 }
@@ -541,25 +540,22 @@ fun formatLocalDate(date: LocalDate): String {
 }
 
 // Improved CSV Export
-fun exportToCsv(products: List<SalesProducts>, file: File) {
+fun exportToCsv(products: List<SalesProduct>, file: File) {
     try {
         file.bufferedWriter().use { out ->
             // Write CSV header with more detailed columns
-            out.write("Product ID,Product Name,Quantity,Price,Date,Total Value")
+            out.write("Product ID,Product Name,Quantity,Unit Price,Total Price,Date")
             out.newLine()
 
             // Write product data
             products.forEach { product ->
-                val totalValue = (product.qty.toIntOrNull() ?: 0) *
-                        (product.price.replace(",", "").toDoubleOrNull() ?: 0.0)
-
                 out.write(
                     "${product.pid}," +
                             "${product.productName.replace(",", ";")}," +
                             "${product.qty}," +
-                            "${product.price}," +
-                            "${product.time}," +
-                            "%,.2f".format(totalValue)
+                            "${product.unitPrice}," +
+                            "${product.formattedDateTime()}," +
+                            "${product.formattedTotalPrice()}"
                 )
                 out.newLine()
             }
@@ -572,7 +568,7 @@ fun exportToCsv(products: List<SalesProducts>, file: File) {
 }
 
 // Improved Excel Export
-fun exportToExcel(products: List<SalesProducts>, file: File) {
+fun exportToExcel(products: List<SalesProduct>, file: File) {
     try {
         XSSFWorkbook().use { workbook ->
             val sheet = workbook.createSheet("Sales Report")
@@ -620,7 +616,7 @@ fun exportToExcel(products: List<SalesProducts>, file: File) {
                 "Product Name",
                 "Quantity",
                 "Unit Price",
-                "Total Value",
+                "Total Price",
                 "Date"
             )
             val headerRow = sheet.createRow(0)
@@ -653,22 +649,20 @@ fun exportToExcel(products: List<SalesProducts>, file: File) {
                 }
 
                 // Unit Price
-                val unitPrice = product.price.replace(",", "").toDoubleOrNull() ?: 0.0
                 row.createCell(3).apply {
-                    setCellValue(unitPrice)
+                    setCellValue(product.unitPrice.toDouble())
                     cellStyle = currencyStyle
                 }
 
-                // Total Value
-                val totalValue = (product.qty.toIntOrNull() ?: 0) * unitPrice
+                // Total Price
                 row.createCell(4).apply {
-                    setCellValue(totalValue)
+                    setCellValue(product.totalPrice.toDouble())
                     cellStyle = currencyStyle
                 }
 
                 // Date
                 row.createCell(5).apply {
-                    setCellValue(product.time)
+                    setCellValue(product.formattedDateTime())
                     cellStyle = dataStyle
                 }
             }
@@ -691,7 +685,7 @@ fun exportToExcel(products: List<SalesProducts>, file: File) {
 
 @Composable
 fun ExportReportDialog(
-    previewData: List<SalesProducts>,
+    previewData: List<SalesProduct>,
     onDismiss: () -> Unit,
     onExport: (ExportFormat, String, String, String, String, String) -> Unit
 ) {
@@ -712,9 +706,8 @@ fun ExportReportDialog(
                 )
                 Text(
                     text = "Total Value: ${
-                        previewData.sumOf {
-                            it.price.toDoubleOrNull() ?: 0.0
-                        }.let { "UGX ${"%,d".format(it.toLong())}" }
+                        previewData.sumOf { it.totalPrice.toDouble() }
+                            .let { "UGX ${"%,d".format(it.toLong())}" }
                     }",
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -821,14 +814,14 @@ fun exportReport(
     format: ExportFormat,
     startDate: LocalDate = LocalDate.now().minusWeeks(1),
     endDate: LocalDate = LocalDate.now(),
-    products: List<SalesProducts>,
+    products: List<SalesProduct>,
 ) {
     val currentDate = LocalDate.now()
 
     // Filter products based on the selected period
     val filteredProducts = products.filter { product ->
         try {
-            val productDate = parseProductDate(product.time)
+            val productDate = product.time.toLocalDate()
             when (period) {
                 ReportPeriod.DIALY -> productDate.isEqual(currentDate)
                 ReportPeriod.WEEKLY -> productDate.isAfter(currentDate.minusWeeks(1))
@@ -876,7 +869,7 @@ fun exportReport(
 }
 
 fun exportToPdf(
-    products: List<SalesProducts>,
+    products: List<SalesProduct>,
     file: File,
     sellsTitle: String,
     companyName: String,
@@ -958,11 +951,8 @@ fun exportToPdf(
 
             // Calculate totals
             val totalProducts = products.size
-            val totalQuantity =
-                products.sumOf { it.qty.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0 }
-            val totalValue = products.sumOf {
-                (it.price.replace(",", "").toDoubleOrNull() ?: 0.0)
-            }
+            val totalQuantity = products.sumOf { it.qty.toLong() }
+            val totalValue = products.sumOf { it.totalPrice.toDouble() }
 
             // Summary Box Content
             contentStream.beginText()
@@ -1039,17 +1029,17 @@ fun exportToPdf(
                 }
 
                 // Calculate total price for this product
-                val unitPrice = product.price.replace(",", "").toDoubleOrNull() ?: 0.0
-                val quantity = product.qty.replace(Regex("[^0-9]"), "").toIntOrNull() ?: 0
-                val perItem = if (quantity > 0) unitPrice / quantity else 0.0
+                val unitPrice = product.unitPrice.toDouble()
+                val quantity = product.qty
+                val totalValue = product.totalPrice.toDouble()
 
                 // Draw row data
                 val rowData = arrayOf(
                     product.productName,
-                    product.qty,
-                    "${"%,d".format(perItem.toLong())} UGX",
+                    product.qty.toString(),
                     "${"%,d".format(unitPrice.toLong())} UGX",
-                    formatDateForPdfExport(product.time)
+                    "${"%,d".format(totalValue.toLong())} UGX",
+                    formatDateForPdfExport(product.time.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME))
                 )
 
                 xPosition = margin + 5
