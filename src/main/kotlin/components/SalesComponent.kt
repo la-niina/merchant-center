@@ -460,24 +460,35 @@ fun AddSaleDialog(
     val notEnoughStock = selectedProduct != null && qtyInt > selectedProduct!!.stockQuantity
     val outOfStock = selectedProduct != null && selectedProduct!!.stockQuantity <= 0
     val canCompleteSale = selectedProduct != null && !outOfStock && !notEnoughStock && price.isNotBlank()
+    var quantityError by remember { mutableStateOf<String?>(null) }
+
     val completeSale = {
-        when {
-            selectedProduct == null -> {
-                productNameError = "Select a product"
+        productNameError = null
+        priceError = null
+        quantityError = null
+
+        if (selectedProduct == null) {
+            productNameError = "Select a product"
+        } else if (outOfStock) {
+            productNameError = "Product is out of stock"
+        } else {
+            val qtyValidation = core.validation.DataValidator.validateQuantity(quantity)
+            val priceValidation = core.validation.DataValidator.validateAndSanitizePrice(price)
+
+            if (qtyValidation is core.validation.DataValidator.ValidationResult.Error) {
+                quantityError = qtyValidation.message
+            } else if (notEnoughStock) {
+                quantityError = "Not enough stock"
             }
-            price.isBlank() -> {
-                priceError = "Price is required"
+
+            if (priceValidation is core.validation.DataValidator.ValidationResult.Error) {
+                priceError = priceValidation.message
             }
-            outOfStock -> {
-                productNameError = "Product is out of stock"
-            }
-            notEnoughStock -> {
-                productNameError = "Not enough stock"
-            }
-            else -> {
+
+            if (quantityError == null && priceError == null) {
                 coroutineScope.launch {
                     val qty = qtyInt
-                    val priceValue = price.trim().replace(",", "").toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
+                    val priceValue = core.validation.DataValidator.sanitizePriceInput(price).toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
                     // Decrement stock in ProductViewModel
                     productViewModel.updateStockQuantity(selectedProduct!!.productId, selectedProduct!!.stockQuantity - qty)
                     onAddSale(
@@ -620,10 +631,15 @@ fun AddSaleDialog(
                 // Quantity Input
                 OutlinedTextField(
                     value = quantity,
-                    onValueChange = { quantity = it },
+                    onValueChange = {
+                        quantity = it
+                        if (it.isNotBlank()) quantityError = null
+                    },
                     label = { Text("Quantity") },
                     placeholder = { Text("Enter quantity") },
                     singleLine = true,
+                    isError = quantityError != null,
+                    supportingText = quantityError?.let { { Text(it) } },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Number,
                         imeAction = ImeAction.Next
